@@ -21,19 +21,19 @@ BEGIN
     	
         case Opcode is
         	when "000" =>
-            	Result <= STD_LOGIC_VECTOR(unsigned(RegB) + unsigned(RegC_or_Imm));
+            	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when "001" =>
-            	Result <= STD_LOGIC_VECTOR(unsigned(RegB) + unsigned(RegC_or_Imm));
+            	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when "010" =>
             	Result <= RegB nand RegC_or_Imm;
             when "011" =>
             	Result <= RegC_or_Imm(9 downto 0) & "000000";
             when "100" =>
-            	Result <= STD_LOGIC_VECTOR(unsigned(RegB) + unsigned(RegC_or_Imm));
+            	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when "101" =>
-            	Result <= STD_LOGIC_VECTOR(unsigned(RegB) + unsigned(RegC_or_Imm));
+            	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when "110" =>
-            	Result <= STD_LOGIC_VECTOR(unsigned(RegB) + unsigned(RegC_or_Imm));
+            	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when others =>
             	Result <= "0000000000000000";
         end case;
