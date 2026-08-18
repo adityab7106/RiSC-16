@@ -122,7 +122,7 @@
         <mxCell id="FXUvQ59DnTbZ8fYWK803-71" connectable="0" parent="1" style="group;strokeWidth=2;" value="" vertex="1">
           <mxGeometry height="113" width="270" x="335" y="737" as="geometry" />
         </mxCell>
-        <mxCell id="FXUvQ59DnTbZ8fYWK803-72" parent="FXUvQ59DnTbZ8fYWK803-71" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeWidth=2;" value="BEQ&lt;br&gt;TEST" vertex="1">
+        <mxCell id="FXUvQ59DnTbZ8fYWK803-72" parent="FXUvQ59DnTbZ8fYWK803-71" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;strokeWidth=2;" value="BEQ" vertex="1">
           <mxGeometry height="80" width="80" x="85" as="geometry" />
         </mxCell>
         <mxCell id="FXUvQ59DnTbZ8fYWK803-95" edge="1" parent="1" source="SYXKYbtJDf0MZxVBWThr-2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Helvetica;fontSize=12;fontColor=default;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="FXUvQ59DnTbZ8fYWK803-93">
@@ -265,8 +265,8 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="gzaMjMgBlcGmAvIVdbxi-28" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;All outputs default to 0&lt;/div&gt;&lt;div&gt;Fetch dispatch uses Mem_Output[15:13]; IR is loaded at the end of DECODE&lt;/div&gt;&lt;div&gt;and is stable in every subsequent state&lt;/div&gt;&lt;div&gt;Memory read has 1 clock latency&lt;/div&gt;&lt;div&gt;PC_value = PC + 1 (adder output)&lt;/div&gt;&lt;div&gt;Immediate is sign-extended (or shifted, for LUI) in the datapath&lt;/div&gt;&lt;div&gt;Register file forces R0 = 0 on all reads&lt;/div&gt;&lt;div&gt;PC and IR initialized via VHDL signal initializers&lt;/div&gt;" vertex="1">
-          <mxGeometry height="30" width="410" x="-190" y="870" as="geometry" />
+        <mxCell id="gzaMjMgBlcGmAvIVdbxi-28" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;div&gt;All outputs default to 0&lt;/div&gt;&lt;div&gt;Fetch dispatch uses Mem_Output[15:13]; IR is loaded at the end of DECODE&lt;/div&gt;&lt;div&gt;and is stable in every subsequent state&lt;/div&gt;&lt;div&gt;Memory read has 1 clock latency&lt;/div&gt;&lt;div&gt;PC_value = PC + 1 (adder output)&lt;/div&gt;&lt;div&gt;Immediate is sign-extended in the controller; LUI&#39;s shift-by-6 is done by the ALU&lt;/div&gt;&lt;div&gt;Register file forces R0 = 0 on all reads&lt;/div&gt;&lt;div&gt;PC and IR initialized via VHDL signal initializers&lt;/div&gt;" vertex="1">
+          <mxGeometry height="30" width="500" x="-270" y="860" as="geometry" />
         </mxCell>
         <mxCell id="-8co_PaY36R5f-lS2GJd-3" edge="1" parent="1" source="-8co_PaY36R5f-lS2GJd-1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;fontFamily=Helvetica;fontSize=12;fontColor=default;strokeWidth=2;" target="FXUvQ59DnTbZ8fYWK803-2">
           <mxGeometry relative="1" as="geometry">
