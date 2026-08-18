@@ -7,10 +7,12 @@ A VHDL implementation of a basic RiSC-16 CPU on a Basys-3 FPGA.
 ```text
 .
 ├── docs/
-│   ├── block_diagrams/
-│   │   ├── top_level_block_diagram.png
+│   ├── Diagrams/
+│   │   ├── Main_RTL.png
 │   │   └── ...
-│   ├── schematics/
+│   ├── Specs/
+│   │   ├── ALU_spec.pdf
+│   │   └── ...
 │   ├── waveforms/
 │   └── report/
 │       ├── Final_Project_Report.tex
