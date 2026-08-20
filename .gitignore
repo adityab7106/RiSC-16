@@ -1,6 +1,6 @@
 
-# Vivado Generated
-.Xil/
+# Vivado auto-generated project folders & copies
+*.srcs/
 *.runs/
 *.sim/
 *.gen/
@@ -8,6 +8,7 @@
 *.cache/
 *.hw/
 *.ioplanning/
+.Xil/
 xsim.dir/
 xgui/
 
