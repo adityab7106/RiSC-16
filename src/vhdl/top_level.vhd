@@ -24,12 +24,16 @@ architecture Structural of RiSC16_Top is
               Q : out STD_LOGIC_VECTOR(15 downto 0));
     end component;
 
-    component Memory is
-        Port( Addr : in STD_LOGIC_VECTOR(15 downto 0);
-              D_in : in STD_LOGIC_VECTOR(15 downto 0);
-              w_enable : in STD_LOGIC;
-              clk : in STD_LOGIC;
-              Q : out STD_LOGIC_VECTOR(15 downto 0));
+    -- Block Memory Generator 8.4, single-port RAM, 65536 x 16, WRITE_FIRST.
+    -- No ena / rsta / regcea pins (Always_Enabled, no reset), and neither
+    -- optional output register is enabled, so douta is valid one clock after
+    -- addra is presented.  Contents come from the COE loaded into the IP.
+    component memory is
+        Port( clka  : in  STD_LOGIC;
+              wea   : in  STD_LOGIC_VECTOR(0 downto 0);
+              addra : in  STD_LOGIC_VECTOR(15 downto 0);
+              dina  : in  STD_LOGIC_VECTOR(15 downto 0);
+              douta : out STD_LOGIC_VECTOR(15 downto 0));
     end component;
 
     component Current_Instruction is
@@ -118,6 +122,7 @@ architecture Structural of RiSC16_Top is
 
     signal Mem_Addr   : STD_LOGIC_VECTOR(15 downto 0);
     signal Mem_Q      : STD_LOGIC_VECTOR(15 downto 0);
+    signal Mem_WEA    : STD_LOGIC_VECTOR(0 downto 0);   -- IP wea is a 1-bit vector
 
     signal IR_Q       : STD_LOGIC_VECTOR(15 downto 0);
 
@@ -167,12 +172,15 @@ begin
     U_PC : Program_Counter
         port map( D => PC_D, En => c_PC_En, clk => clk, Q => PC_Q );
 
-    U_MEM : Memory
-        port map( Addr     => Mem_Addr,
-                  D_in     => c_Mem_write,
-                  w_enable => c_Mem_write_en,
-                  clk      => clk,
-                  Q        => Mem_Q );
+    -- w_enable widened to the IP's 1-bit write-enable vector
+    Mem_WEA(0) <= c_Mem_write_en;
+
+    U_MEM : memory
+        port map( clka  => clk,
+                  wea   => Mem_WEA,
+                  addra => Mem_Addr,
+                  dina  => c_Mem_write,
+                  douta => Mem_Q );
 
     U_IR : Current_Instruction
         port map( D_in => Mem_Q, En => c_IR_En, clk => clk, Q => IR_Q );
