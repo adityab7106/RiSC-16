@@ -1,3 +1,4 @@
+
 # Vivado Generated
 .Xil/
 *.runs/
@@ -75,3 +76,14 @@ $RECYCLE.BIN/
 .directory
 .Trash-*
 .nfs*
+
+
+# Assembler binaries & artifacts
+assembler_bin
+*.hex
+*.o
+
+# Python virtual environment & caches
+__pycache__/
+*.pyc
+.venv/
