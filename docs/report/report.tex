@@ -1,0 +1,535 @@
+%==============================================================
+% Engs 31 / CoSc 56 - Digital Electronics, Summer 2026
+% Final Project Report
+%==============================================================
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{fancyhdr}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{figures/}}
+
+% ---- header / footer ----
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Engs 31 / CoSc 56 --- Digital Electronics Summer 2026}
+\rhead{Final Project Report}
+\cfoot{Page \thepage}
+
+% ---- VHDL listing style ----
+\lstdefinestyle{vhdl}{
+  language=VHDL,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny
+}
+% ---- Python listing style (for the support script) ----
+\lstdefinestyle{py}{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue},
+  stringstyle=\color{teal},
+  commentstyle=\color{gray},
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny
+}
+\lstset{style=vhdl}
+
+% ---- convenience figure macro ----
+\newcommand{\projfig}[3]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=#2\textwidth]{#1}
+    \caption{#3}
+    \label{fig:#1}
+  \end{figure}}
+
+\title{\vspace{-1.5em}\textbf{Engs 31 / CoSc 56 Final Project Report \\ RiSC-16 CPU}}
+\author{Jagger Winkler \and <Second Partner Name>}
+\date{\today}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+%==============================================================
+\section*{Abstract}
+% ~300 words or less. High-level description of the digital system,
+% key components, implementation, and testing results.
+<Abstract text.>
+
+\vspace{1em}
+\tableofcontents
+\newpage
+
+%==============================================================
+\section{System Overview}
+% Plain English: overall goal, intended behavior, specifications met.
+
+\subsection{Top-level Block Diagram}
+% Inputs on left, outputs on right. Label all ports, components, control signals.
+% \projfig{top_level_block}{0.9}{Top-level block diagram.}
+
+\subsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    clk    & In  & 1 & 100 MHz system clock \\
+    <port> & In  & <n> & <description> \\
+    <port> & Out & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{Top-level ports.}
+\end{table}
+
+\subsection{Description of Components}
+% 1-2 sentences each, plus any top-level glue logic.
+\begin{description}
+  \item[<Component 1>] <Short description.>
+  \item[<Component 2>] <Short description.>
+  \item[<Component 3>] <Short description.>
+  \item[<Component 4>] <Short description.>
+  \item[<Component 5>] <Short description.>
+  \item[<Component 6>] <Short description.>
+  \item[<Component 7>] <Short description.>
+  \item[<Component 8>] <Short description.>
+  \item[Glue logic] <Short description.>
+\end{description}
+
+\subsection{Supporting Software}
+% Describe the script you wrote: what problem it solves, why it was needed,
+% and how it fits into the hardware design flow.
+
+\subsubsection{Purpose and Motivation}
+% What does the script do and why was writing it necessary?
+
+\subsubsection{Usage and Workflow}
+% Language/dependencies, how it is invoked, where it sits in the build flow
+% (e.g. source in -> generated file out -> consumed by Vivado).
+
+\subsubsection{Input and Output Formats}
+% Exact format expected in and produced out. A short before/after example is
+% much clearer than prose here.
+%
+% \begin{lstlisting}[style=py,caption={Excerpt from <script>.py}]
+% <code>
+% \end{lstlisting}
+
+\subsubsection{Verification of the Script}
+% How you convinced yourself the generated output is correct
+% (hand-checked cases, round-trip test, comparison against a reference, etc.).
+
+%==============================================================
+\section{Technical Description}
+% Full detail on each component in the top level, one by one.
+
+\subsection{<Component 1>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 1> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp1_rtl}{0.9}{RTL diagram of <Component 1>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp1_fsm}{0.75}{State transition diagram for <Component 1>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 2>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 2> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp2_rtl}{0.9}{RTL diagram of <Component 2>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp2_fsm}{0.75}{State transition diagram for <Component 2>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 3>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 3> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp3_rtl}{0.9}{RTL diagram of <Component 3>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp3_fsm}{0.75}{State transition diagram for <Component 3>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 4>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 4> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp4_rtl}{0.9}{RTL diagram of <Component 4>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp4_fsm}{0.75}{State transition diagram for <Component 4>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 5>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 5> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp5_rtl}{0.9}{RTL diagram of <Component 5>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp5_fsm}{0.75}{State transition diagram for <Component 5>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 6>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 6> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp6_rtl}{0.9}{RTL diagram of <Component 6>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp6_fsm}{0.75}{State transition diagram for <Component 6>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 7>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 7> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp7_rtl}{0.9}{RTL diagram of <Component 7>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp7_fsm}{0.75}{State transition diagram for <Component 7>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+\subsection{<Component 8>}
+% Short description of the component (similar to Sec. 1.3).
+
+\subsubsection{Description of Ports}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \midrule
+    <port> & <In/Out> & <n> & <description> \\
+    \bottomrule
+  \end{tabular}
+  \caption{<Component 8> ports.}
+\end{table}
+
+\subsubsection{Register Transfer Level (RTL) Diagram}
+% \projfig{comp8_rtl}{0.9}{RTL diagram of <Component 8>.}
+% Text describing how the pieces work together.
+
+\subsubsection{Finite State Machine (FSM) Diagram}
+% If applicable. Label all states, inputs, outputs; describe behavior.
+% \projfig{comp8_fsm}{0.75}{State transition diagram for <Component 8>.}
+
+\subsubsection{Description of Memory}
+% If applicable. Width, depth, contents (for ROM), control signals.
+
+%==============================================================
+\section{Design Validation}
+% Modular strategy: verify each component in simulation and hardware
+% before integration. Parallel structure to Section 2.
+
+\subsection{<Component 1>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp1_sim}{0.95}{Behavioral simulation of <Component 1>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 2>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp2_sim}{0.95}{Behavioral simulation of <Component 2>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 3>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp3_sim}{0.95}{Behavioral simulation of <Component 3>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 4>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp4_sim}{0.95}{Behavioral simulation of <Component 4>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 5>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp5_sim}{0.95}{Behavioral simulation of <Component 5>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 6>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp6_sim}{0.95}{Behavioral simulation of <Component 6>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 7>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp7_sim}{0.95}{Behavioral simulation of <Component 7>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Component 8>}
+% Testing strategy and success criteria.
+
+\subsubsection{Behavioral Simulations}
+% Legible, annotated waveforms.
+% \projfig{comp8_sim}{0.95}{Behavioral simulation of <Component 8>.}
+
+\subsubsection{Hardware Validation}
+% Scope / logic analyzer captures, photos, or video link. Annotate.
+
+\subsection{<Subsystem 1>}
+% Use only if testing needs to go deeper than top level + components.
+\subsubsection{<Subcomponent 1>}
+\paragraph{Behavioral Simulations}\mbox{}\\
+\paragraph{Hardware Validation}\mbox{}\\
+
+\subsubsection{<Subcomponent 2>}
+\paragraph{Behavioral Simulations}\mbox{}\\
+\paragraph{Hardware Validation}\mbox{}\\
+
+\subsection{Overall Design}
+\subsubsection{Behavioral Simulations}
+\subsubsection{Hardware Validation}
+
+%==============================================================
+\section{Analysis of the Design}
+% Was it successful? Unexpected difficulties? Difficult bugs?
+% If something doesn't work, say what's wrong and how you'd fix it.
+% Aim this at a future student doing a similar project.
+
+\subsection{Resource Utilization}
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    \textbf{Resource} & \textbf{Used} & \textbf{Available} & \textbf{Utilization} \\
+    \midrule
+    Slice LUTs      & <n> & 20800 & <\%> \\
+    Slice Registers & <n> & 41600 & <\%> \\
+    Block RAM Tile  & <n> & 50    & <\%> \\
+    DSPs            & <n> & 90    & <\%> \\
+    Bonded IOB      & <n> & 106   & <\%> \\
+    BUFGCTRL        & <n> & 32    & <\%> \\
+    \bottomrule
+  \end{tabular}
+  \caption{Post-implementation resource utilization (Artix-7 XC7A35T, Basys3).}
+\end{table}
+
+\subsection{Residual Warnings}
+% List each remaining warning and why it can be ignored.
+% All unintended-latch warnings must be resolved.
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}p{0.45\textwidth}p{0.45\textwidth}@{}}
+    \toprule
+    \textbf{Warning} & \textbf{Justification} \\
+    \midrule
+    <warning text> & <why it is safe to ignore> \\
+    \bottomrule
+  \end{tabular}
+  \caption{Residual warnings.}
+\end{table}
+
+\subsection{Division of Labor}
+% How the work was split and whether the strategy worked.
+
+\subsection{Future Work}
+% Next steps to expand or improve the design.
+
+%==============================================================
+\section{Acknowledgements}
+% Outside sources of information or code; helpful people.
+% No need to cite the textbook, daily exercises, or course videos.
+
+%==============================================================
+\section{Conclusions}
+% Brief summary, closing remarks, advice to future students.
+
+%==============================================================
+\appendix
+
+\section{VHDL Source Code}
+% All design code submitted in a single zip; list the files here.
+\begin{itemize}
+  \item \texttt{<file>.vhd} --- <short description>
+  \item \texttt{<file>.vhd} --- <short description>
+\end{itemize}
+
+\section{VHDL Testbenches}
+% All testbench code submitted in a single zip; list the files here.
+\begin{itemize}
+  \item \texttt{<file>\_tb.vhd} --- <short description>
+  \item \texttt{<file>\_tb.vhd} --- <short description>
+\end{itemize}
+
+\section{Support Script Source Code}
+% List the script file(s) included in the submission zip.
+\begin{itemize}
+  \item \texttt{<script>.py} --- <short description>
+\end{itemize}
+
+\end{document}
