@@ -191,11 +191,16 @@ begin
             -- Mem_Output is registered, so it still holds the loaded word for one edge even
             -- after the address mux has reverted to the PC path
             when LOAD_A =>
-                Reg_Addr  <= IR(12 downto 10);
-                Reg_write <= Mem_Output;
-                Reg_w_en  <= '1';
-                PC_En     <= '1';
-
+                Opcode          <= IR(15 downto 13);
+                Reg_Addr_B      <= IR(9 downto 7);
+                Immediate       <= Imm_Sign;
+                Read_Immediate  <= '1';
+                Mem_Set_Addr    <= ALU_Result;
+                Mem_Set_Addr_en <= '1';
+                Reg_Addr        <= IR(12 downto 10);
+                Reg_write       <= Mem_Output;
+                Reg_w_en        <= '1';
+                PC_En           <= '1';
             -- the comparator sits off Q_A/Q_B and does not contend with the
             -- ALU, so the test and the branch fit in one state
             -- IF TIMING ISSUES, THIS IS LIKLEY LONGEST PATH
