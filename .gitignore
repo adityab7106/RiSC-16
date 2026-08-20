@@ -11,6 +11,20 @@
 .Xil/
 xsim.dir/
 xgui/
+# Ignore IP generated output products
+src/ip/**/synth/
+src/ip/**/sim/
+src/ip/**/simulation/
+src/ip/**/doc/
+src/ip/**/hdl/
+src/ip/**/*.vho
+src/ip/**/*.veo
+src/ip/**/*.log
+src/ip/**/*.xml
+
+# Keep the core IP configuration
+!src/ip/**/*.xci
+!src/ip/**/*.xcix
 
 *.log
 *.jou
