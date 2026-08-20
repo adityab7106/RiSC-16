@@ -14,7 +14,6 @@
 #define OP_SHIFT 13
 #define A_SHIFT  10
 #define B_SHIFT  7
-
 #define ADD  0
 #define ADDI 1
 #define NAND 2
