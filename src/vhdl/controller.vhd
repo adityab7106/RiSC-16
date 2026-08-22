@@ -48,7 +48,7 @@ end Controller;
 
 Architecture Behavioral of Controller is
 
-    type state_type is (FETCH, DECODE, RRR, ADDI, LUI, SW, LW, LOAD_A, BEQ, JALR);
+    type state_type is (FETCH, FETCH2, DECODE, RRR, ADDI, LUI, SW, LW, LOAD_A, BEQ, JALR);
 
     signal state      : state_type := FETCH;
     signal next_state : state_type;
@@ -79,7 +79,10 @@ begin
         case state is
 
             when FETCH =>
-                next_state <= DECODE;
+                next_state <= FETCH2;
+				
+			when FETCH2 =>
+				next_state <= DECODE;
 
             when DECODE =>
                 case Mem_Output(15 downto 13) is
@@ -132,6 +135,9 @@ begin
             -- memory address mux; the read completes on the next edge
             when FETCH =>
                 null;
+				
+			when FETCH2 =>
+				null;
 
             when DECODE =>
                 IR_En <= '1';
