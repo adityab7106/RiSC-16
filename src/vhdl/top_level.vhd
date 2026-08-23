@@ -4,11 +4,9 @@ use IEEE.NUMERIC_STD.ALL;
 
 entity RiSC16_Top is
     Port(
-        clk        : in  STD_LOGIC;
-        -- debug ports for observing the internal state of the processor
-        dbg_PC     : out STD_LOGIC_VECTOR(15 downto 0);
-        dbg_IR     : out STD_LOGIC_VECTOR(15 downto 0);
-        dbg_Result : out STD_LOGIC_VECTOR(15 downto 0)
+        clk      : in  STD_LOGIC;
+        seg_port : out STD_LOGIC_VECTOR(0 to 6);
+        an_port  : out STD_LOGIC_VECTOR(3 downto 0)
     );
 end RiSC16_Top;
 
@@ -53,7 +51,8 @@ architecture Structural of RiSC16_Top is
               clk : in STD_LOGIC;
               Q_A : out STD_LOGIC_VECTOR(15 downto 0);
               Q_B : out STD_LOGIC_VECTOR(15 downto 0);
-              Q_C : out STD_LOGIC_VECTOR(15 downto 0));
+              Q_C : out STD_LOGIC_VECTOR(15 downto 0);
+              Q_R7 : out STD_LOGIC_VECTOR(15 downto 0));
     end component;
 
     component ALU is
@@ -89,6 +88,13 @@ architecture Structural of RiSC16_Top is
               Immediate : out STD_LOGIC_VECTOR(15 downto 0);
               Read_Immediate : out STD_LOGIC;
               Read_PC : out STD_LOGIC);
+    end component;
+
+    component seven_seg_mux is
+        Port( clk      : in  STD_LOGIC;
+              value    : in  STD_LOGIC_VECTOR(15 downto 0);
+              seg_port : out STD_LOGIC_VECTOR(0 to 6);
+              an_port  : out STD_LOGIC_VECTOR(3 downto 0));
     end component;
 
     ---------------------------------------------------------------------------
@@ -127,6 +133,7 @@ architecture Structural of RiSC16_Top is
     signal IR_Q       : STD_LOGIC_VECTOR(15 downto 0);
 
     signal Q_A, Q_B, Q_C : STD_LOGIC_VECTOR(15 downto 0);
+    signal R7         : STD_LOGIC_VECTOR(15 downto 0);  -- display tap
 
     signal ALU_A      : STD_LOGIC_VECTOR(15 downto 0);  -- ALU "RegB" port
     signal ALU_B      : STD_LOGIC_VECTOR(15 downto 0);  -- ALU "RegC_or_Imm" port
@@ -195,7 +202,8 @@ begin
                   clk      => clk,
                   Q_A      => Q_A,
                   Q_B      => Q_B,
-                  Q_C      => Q_C );
+                  Q_C      => Q_C,
+                  Q_R7     => R7 );
 
     U_ALU : ALU
         port map( RegB        => ALU_A,
@@ -230,8 +238,11 @@ begin
                   Read_Immediate  => c_Read_Immediate,
                   Read_PC         => c_Read_PC );
 
-    dbg_PC     <= PC_Q;
-    dbg_IR     <= IR_Q;
-    dbg_Result <= ALU_Out;
+    -- register 7 is displayed as four hex digits
+    U_DISP : seven_seg_mux
+        port map( clk      => clk,
+                  value    => R7,
+                  seg_port => seg_port,
+                  an_port  => an_port );
 
 end Structural;

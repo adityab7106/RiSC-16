@@ -16,7 +16,8 @@ entity Register_File is
 
         Q_A      : out STD_LOGIC_VECTOR(15 downto 0);
         Q_B      : out STD_LOGIC_VECTOR(15 downto 0);
-        Q_C      : out STD_LOGIC_VECTOR(15 downto 0)
+        Q_C      : out STD_LOGIC_VECTOR(15 downto 0);
+        Q_R7     : out STD_LOGIC_VECTOR(15 downto 0)
     );
 end Register_File;
 
@@ -43,5 +44,6 @@ begin
     Q_A <= registers(to_integer(unsigned(Read_A)));
     Q_B <= registers(to_integer(unsigned(Read_B)));
     Q_C <= registers(to_integer(unsigned(Read_C)));
+    Q_R7 <= registers(7);
 
 end Behavioral;
