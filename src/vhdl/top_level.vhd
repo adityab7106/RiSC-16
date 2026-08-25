@@ -43,6 +43,7 @@ architecture Structural of RiSC16_Top is
         Port( Wr_addr : in STD_LOGIC_VECTOR(2 downto 0);
               D_in : in STD_LOGIC_VECTOR(15 downto 0);
               w_enable : in STD_LOGIC;
+              reset : in STD_LOGIC;
               Read_A : in STD_LOGIC_VECTOR(2 downto 0);
               Read_B : in STD_LOGIC_VECTOR(2 downto 0);
               Read_C : in STD_LOGIC_VECTOR(2 downto 0);
@@ -267,6 +268,7 @@ begin
         port map( Wr_addr  => c_Reg_Addr,
                   D_in     => c_Reg_write,
                   w_enable => Reg_w_en_i,
+                  reset    => reset,
                   Read_A   => c_Reg_Addr_A,
                   Read_B   => c_Reg_Addr_B,
                   Read_C   => c_Reg_Addr_C,

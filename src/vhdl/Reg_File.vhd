@@ -8,6 +8,8 @@ entity Register_File is
         D_in     : in  STD_LOGIC_VECTOR(15 downto 0);
         w_enable : in  STD_LOGIC;
 
+        reset    : in  STD_LOGIC;                 -- btnC: clears all registers to 0
+
         Read_A   : in  STD_LOGIC_VECTOR(2 downto 0);
         Read_B   : in  STD_LOGIC_VECTOR(2 downto 0);
         Read_C   : in  STD_LOGIC_VECTOR(2 downto 0);
@@ -34,7 +36,9 @@ begin
     process(clk)
     begin
         if rising_edge(clk) then
-            if w_enable = '1' then
+            if reset = '1' then
+                registers <= (others => (others => '0'));
+            elsif w_enable = '1' then
                 registers(to_integer(unsigned(Wr_addr))) <= D_in;
             end if;
         end if;
