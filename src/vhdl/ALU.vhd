@@ -34,6 +34,8 @@ BEGIN
             	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when "110" =>
             	Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
+            when "111" =>                                    -- JALR: target = RegB + r0
+                Result <= STD_LOGIC_VECTOR(signed(RegB) + signed(RegC_or_Imm));
             when others =>
             	Result <= "0000000000000000";
         end case;
