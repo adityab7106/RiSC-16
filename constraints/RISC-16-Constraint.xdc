@@ -118,12 +118,11 @@ set_property PACKAGE_PIN W4 [get_ports {an_port[3]}]
 ##====================================================================
 ## USB HID (PS/2)
 ##====================================================================
-#set_property PACKAGE_PIN C17 [get_ports PS2Clk_ext_port]						
-	#set_property IOSTANDARD LVCMOS33 [get_ports PS2Clk_ext_port]
-	#set_property PULLUP true [get_ports PS2Clk_ext_port]
-#set_property PACKAGE_PIN B17 [get_ports PS2Data_ext_port]					
-	#set_property IOSTANDARD LVCMOS33 [get_ports PS2Data_ext_port]	
-	#set_property PULLUP true [get_ports PS2Data_ext_port]
+set_property PACKAGE_PIN B18 [get_ports RsRx]
+    set_property IOSTANDARD LVCMOS33 [get_ports RsRx]
+set_property PACKAGE_PIN U18 [get_ports reset]     ;# btnC, optional
+    set_property IOSTANDARD LVCMOS33 [get_ports reset]
+
 
 ##====================================================================
 ## Implementation Assist

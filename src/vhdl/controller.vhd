@@ -8,6 +8,11 @@ entity Controller is
     Port(
         Clk             : in  STD_LOGIC;
 
+        -- held in FETCH with every output at its default while Start = '0'.
+        -- the bootloader drives this with Boot_Done, so the CPU does not begin
+        -- executing until the payload is in memory.
+        Start           : in  STD_LOGIC;
+
         -- datapath inputs
         Mem_Output      : in  STD_LOGIC_VECTOR(15 downto 0);
         IR              : in  STD_LOGIC_VECTOR(15 downto 0);
@@ -68,7 +73,11 @@ begin
     -- state register
     process(Clk) begin
         if rising_edge(Clk) then
-            state <= next_state;
+            if Start = '0' then
+                state <= FETCH;
+            else
+                state <= next_state;
+            end if;
         end if;
     end process;
 
