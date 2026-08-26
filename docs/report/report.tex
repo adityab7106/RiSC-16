@@ -71,7 +71,11 @@
 \section*{Abstract}
 % ~300 words or less. High-level description of the digital system,
 % key components, implementation, and testing results.
-<Abstract text.>
+This project implements a 16-bit RISC-16 processor on a Xilinx FPGA hosted on a Digilent Basys3 board. VHDL was primarily used to code the functionalities of the project, which was synthesized with Vivado 2024.2. The design of the processor calls for a multi-cycle architecture, where each instruction executes over a sequence of controller states, leading to a simpler datapath and shorter critical paths.\\
+\\
+There are seven primary components in the system: a program counter, a combined instruction and data memory implemented as a Block Memory Generator IP, an instruction register, a three-port register file with a hardwired zero register, an arithmetic-logic unit (ALU) that can support operations such as addition, nand, and upper-immediate shifting, a finite-state-machine controller, and a seven-segment display driver that showcases the current value of register seven. There are four multiplexers that appropriately steer the data between components based on the controller's directions. To avoid having to resynthesize the design for each test program, a bootloader is implemented that assembles RISC-16 from a text file and transfers the resulting machine code to the board over the USB-UART link, where a receiver writes it into program memory. A single command handles environment setup, assembly, and upload, and a reset button then clears the display and begins execution.\\
+\\
+The verification proceeded in two stages. First, behavioral simulations were performed on Vivado XSim and EDA Playground using the test benches that were written for testing each individual component. The simulations were instrumental in observing the program counter, instruction register, the ALU, the register file, and controller states. Sample inputs were passed into each component, and correct outputs were confirmed before continuing to the next stage: hardware validation. Several instructions were implemented, and the seven-segment display was used to confirm the results stored in register seven matched the expected outputs.
 
 \vspace{1em}
 \tableofcontents
