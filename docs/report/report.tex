@@ -60,7 +60,7 @@
   \end{figure}}
 
 \title{\vspace{-1.5em}\textbf{Engs 31 / CoSc 56 Final Project Report \\ RiSC-16 CPU}}
-\author{Jagger Winkler \and <Second Partner Name>}
+\author{Jagger Winkler \and Aditya Binay}
 \date{\today}
 
 \begin{document}
@@ -71,7 +71,11 @@
 \section*{Abstract}
 % ~300 words or less. High-level description of the digital system,
 % key components, implementation, and testing results.
-<Abstract text.>
+This project implements a 16-bit RISC-16 processor on a Xilinx FPGA hosted on a Digilent Basys3 board. VHDL was primarily used to code the functionalities of the project, which was synthesized with Vivado 2024.2. The design of the processor calls for a multi-cycle architecture, where each instruction executes over a sequence of controller states, leading to a simpler datapath and shorter critical paths.\\
+\\
+There are seven primary components in the system: a program counter, a combined instruction and data memory implemented as a Block Memory Generator IP, an instruction register, a three-port register file with a hardwired zero register, an arithmetic-logic unit (ALU) that can support operations such as addition, nand, and upper-immediate shifting, a finite-state-machine controller, and a seven-segment display driver that showcases the current value of register seven. There are four multiplexers that appropriately steer the data between components based on the controller's directions. To avoid having to resynthesize the design for each test program, a bootloader is implemented that assembles RISC-16 from a text file and transfers the resulting machine code to the board over the USB-UART link, where a receiver writes it into program memory. A single command handles environment setup, assembly, and upload, and a reset button then clears the display and begins execution.\\
+\\
+The verification proceeded in two stages. First, behavioral simulations were performed on Vivado XSim and EDA Playground using the test benches that were written for testing each individual component. The simulations were instrumental in observing the program counter, instruction register, the ALU, the register file, and controller states. Sample inputs were passed into each component, and correct outputs were confirmed before continuing to the next stage: hardware validation. Several instructions were implemented, and the seven-segment display was used to confirm the results stored in register seven matched the expected outputs.
 
 \vspace{1em}
 \tableofcontents
@@ -103,73 +107,305 @@
 \subsection{Description of Components}
 % 1-2 sentences each, plus any top-level glue logic.
 \begin{description}
-  \item[Controller] <Short description.>
+  \item[Controller] A Moore finite state machine that sequences every
+    instruction through fetch, decode, and execute. It decodes the opcode field
+    of the word returning from memory and drives all of the datapath's mux
+    selects, write enables, register addresses, and the sign- or zero-extended
+    immediate.
   \item[ALU] <Short description.>
   \item[Memory] <Short description.>
   \item[Register File] <Short description.>
   \item[Program Counter] <Short description.>
   \item[Instruction Register] <Short description.>
-  \item[UART Receiver] <Short description.>
-  \item[Bootloader Controller and Registers] <Short description.>
+  \item[UART Receiver] An 8N1 serial receiver that recovers one byte per frame
+    from the Basys-3 USB--UART bridge at 115200~baud, together with a byte-pair
+    assembler that joins two consecutive bytes into one 16-bit word. It is a
+    block inside \texttt{bootloader.vhd} rather than a separate entity.
+  \item[Bootloader Controller and Registers] A second Moore FSM, a payload
+    terminal-count register, and a payload address counter. The FSM takes the
+    first word off the UART as the number of instruction words to expect, writes
+    each following word into consecutive memory addresses, and then asserts
+    \texttt{Boot\_Done} to hand the memory port and the CPU over to the
+    Controller.
   \item[Top Level] <Short description.>
+  % Glue logic to describe here: the boot mux (address, write data, and write
+  % enable all switch from the bootloader to the CPU together on Boot_Done),
+  % the PC next-address mux, the CPU memory address mux, the two ALU operand
+  % muxes, the PC+1 incrementer, the equality comparator, and the display mux.
 \end{description}
 
 \subsection{Supporting Software}
-% Describe the script you wrote: what problem it solves, why it was needed,
-% and how it fits into the hardware design flow.
-Within the Bootloader di 
+The bootloader is only half of the program-loading story: it defines a wire
+protocol, but something on the host side has to produce a program in that
+format and push it down the serial link. Three pieces of software sit outside
+the FPGA and make up that host-side toolchain.
 
-
+\begin{description}
+  \item[\texttt{assembler.c}] A two-pass RiSC-16 assembler that turns
+    human-readable assembly into one hexadecimal machine word per line.
+  \item[\texttt{uploader.py}] A Python script that reads the assembler's
+    output, frames it into the bootloader's wire protocol, finds the board's
+    serial port, and transmits the payload.
+  \item[\texttt{upload.ps1}] A PowerShell driver that runs the whole flow with
+    one command, creating the Python virtual environment and compiling the
+    assembler the first time it is invoked. A \texttt{Makefile} provides the
+    same two steps for a POSIX shell.
+\end{description}
 
 \subsubsection{Purpose and Motivation}
-% What does the script do and why was writing it necessary?
+Before the bootloader existed, changing the test program meant editing a
+\texttt{.coe} file, regenerating the Block Memory Generator IP, and rerunning
+synthesis and implementation --- several minutes of turnaround for a one-line
+change to the program. The booloader makes hardware testing much faster, and the
+device more practical.
+
+The assembler is derived from the reference RiSC-16
+assembler by Bruce Jacob, which is written in pre-ANSI K\&R C and does not
+compile cleanly under a modern toolchain. It was refactored into modern C
+(prototyped functions, \texttt{stdlib.h}/\texttt{ctype.h} included,
+\texttt{strtol} instead of hand-rolled parsing) so that it builds warning-free
+with \texttt{gcc -Wall -Wextra}, and its output format was set to match what
+the uploader expects.
+
+The uploader exists because the bootloader's protocol is specific enough that
+a generic terminal program cannot produce it. The payload has to be preceded by
+a word count, and every word has to go out high byte first; a serial monitor
+sending ASCII would produce neither. It also handles the practical problem of
+finding the board, which on Windows appears as an arbitrary \texttt{COM} number
+that changes between machines and USB ports.
 
 \subsubsection{Usage and Workflow}
-% Language/dependencies, how it is invoked, where it sits in the build flow
-% (e.g. source in -> generated file out -> consumed by Vivado).
+The assembler is a single C file with no dependencies beyond the standard
+library. The uploader is Python 3 and depends only on \texttt{pyserial}, pinned
+in \texttt{requirements.txt}. Neither one is touched by Vivado: the bitstream is
+built once, and after that the entire edit-run cycle is host-side.
+
+The normal flow is one command:
+\begin{lstlisting}[style=py,caption={Assembling and uploading a program.},numbers=none]
+PS> .\upload.ps1                    # program.s, autodetected COM port
+PS> .\upload.ps1 -Program test.s -Port COM4
+PS> .\upload.ps1 -ListPorts         # show every serial port
+\end{lstlisting}
+
+\noindent That expands into four steps:
+
+\begin{enumerate}
+  \item \textbf{Environment setup (first run only).} \texttt{upload.ps1}
+    creates \texttt{.venv}, installs \texttt{pyserial}, and compiles
+    \texttt{assembler.c} with whichever of \texttt{gcc} or \texttt{cl} is on
+    the \texttt{PATH}. Later runs recompile only if the source is newer than
+    the executable.
+  \item \textbf{Assembly.} \texttt{assembler.exe program.s program.hex}
+    produces one four-digit hex word per line.
+  \item \textbf{Framing.} \texttt{uploader.py} parses the hex file, prepends
+    the word count, and serialises everything big-endian.
+  \item \textbf{Transmission.} The payload is written to the board's serial
+    port at 115200~baud, 8N1. The bootloader writes the words into memory,
+    raises \texttt{Boot\_Done}, and the CPU starts executing at address 0.
+\end{enumerate}
+
+The board is identified by looking for the USB--UART bridge. If exactly one is present it is used automatically; if none
+or several are found the script lists what it can see and exits rather than
+guessing. \texttt{--port} overrides the search, \texttt{--list} prints the
+available ports, and \texttt{--dry-run} builds and prints the payload without
+opening a port, which is what makes the payload inspectable without hardware
+attached.
+
+One failure mode is not obvious: Windows lets
+only one process hold a \texttt{COM} port, so an open Vivado Hardware Manager
+or serial terminal makes the upload fail with a permission error. The script
+catches that case specifically and says which programs to close.
 
 \subsubsection{Input and Output Formats}
-% Exact format expected in and produced out. A short before/after example is
-% much clearer than prose here.
-%
-% \begin{lstlisting}[style=py,caption={Excerpt from <script>.py}]
-% <code>
-% \end{lstlisting}
+\textbf{Assembler input.} RiSC-16 assembly, one instruction per line, with
+optional labels in the first column and \texttt{\#} comments. Alongside the
+eight real opcodes it accepts the standard pseudo-instructions
+(\texttt{nop}, \texttt{halt}, \texttt{lli}, \texttt{movi}) and the directives
+\texttt{.fill} and \texttt{.space}. \texttt{movi} expands to two words
+(\texttt{lui} then \texttt{addi}), which pass one accounts for when assigning
+label addresses. Branch targets may be written as labels; pass two resolves
+them to the PC-relative offset and rejects anything outside the $-64$ to $63$
+range the 7-bit field holds.
 
-\subsubsection{Verification of the Script}
-% How you convinced yourself the generated output is correct
-% (hand-checked cases, round-trip test, comparison against a reference, etc.).
+\textbf{Assembler output, uploader input.} One four-digit lowercase hex word
+per line. \texttt{uploader.py} strips \texttt{\#} and \texttt{//} comments and
+blank lines, and rejects any line that is not a hex value inside 16 bits.
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    \textbf{Source line} & \textbf{Encoding} & \textbf{Fields} & \textbf{Hex} \\
+    \midrule
+    \texttt{addi r1, r0, 5}  & \texttt{001\,001\,000\,0000101} & op, rA, rB, imm7 & \texttt{2405} \\
+    \texttt{addi r2, r0, 7}  & \texttt{001\,010\,000\,0000111} & op, rA, rB, imm7 & \texttt{2807} \\
+    \texttt{addi r7, r1, 7}  & \texttt{001\,111\,001\,0000111} & op, rA, rB, imm7 & \texttt{3c87} \\
+    \texttt{add  r3, r1, r2} & \texttt{000\,011\,001\,0000\,010} & op, rA, rB, rC & \texttt{0c82} \\
+    \bottomrule
+  \end{tabular}
+  \caption{The first four lines of a sample program and the words the
+    assembler emits for them.}
+\end{table}
+
+\textbf{Uploader output, bootloader input.} A flat byte stream: a 16-bit word
+count, then that many 16-bit instruction words, each sent high byte first as
+two 8N1 frames. The 18-word program above becomes 38~bytes beginning
+\texttt{00 12 24 05 28 07 3c 87 0c 82 \ldots}, where \texttt{0x0012} is the
+count of 18 and \texttt{0x2405} is the first instruction.
+
+\begin{lstlisting}[style=py,caption={The framing step from \texttt{uploader.py}.}]
+def build_payload(words):
+    payload = bytearray(len(words).to_bytes(2, "big"))     # header: word count
+    for w in words:
+        payload += w.to_bytes(2, "big")                    # then the program
+    return bytes(payload)
+\end{lstlisting}
+
 
 %==============================================================
 \section{Technical Description}
 % Full detail on each component in the top level, one by one.
 
 \subsection{Controller}
-% Short description of the component (similar to Sec. 1.3).
+The Controller is the only piece of sequencing logic in the CPU. It holds no
+architectural state of its own --- no PC, no registers, no accumulator --- and
+its entire job is to walk one instruction at a time through fetch, decode, and
+execute while asserting exactly the control signals that instruction needs. It
+is written as a pure Moore machine.
+The implementation is three processes and two concurrent assignments: a state
+register, next-state logic, output logic, and two combinational formatters that
+build the immediate.
 
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{Clk}             & In  & 1  & 100~MHz system clock \\
+    \texttt{Start}           & In  & 1  & Held in \texttt{FETCH} with all outputs at their defaults while low. Driven by \texttt{Boot\_Done}, so the CPU cannot execute until the payload is in memory \\
+    \texttt{Mem\_Output}     & In  & 16 & Word returning from memory. Used for dispatch during \texttt{DECODE} and as the write-back value for \texttt{lw} \\
+    \texttt{IR}              & In  & 16 & Held instruction; the source of every register address and immediate field during execute \\
+    \texttt{PC\_value}       & In  & 16 & PC${}+{}$1, used as the link value for \texttt{jalr} \\
+    \texttt{ALU\_Result}     & In  & 16 & ALU output, routed to the register file, memory address, or PC depending on the instruction \\
+    \texttt{Reg\_A}          & In  & 16 & Register file port A, the value stored by \texttt{sw} \\
+    \texttt{EQ\_flag}        & In  & 1  & Comparator output; drives \texttt{PC\_Sel} during \texttt{BEQ} \\
+    \midrule
+    \texttt{PC\_Sel}         & Out & 1  & 0 selects PC${}+{}$1, 1 selects the branch or jump target \\
+    \texttt{PC\_En}          & Out & 1  & Asserted in the state where the instruction retires \\
+    \texttt{PC\_Write}       & Out & 16 & Branch or jump target, taken from \texttt{ALU\_Result} \\
+    \texttt{Mem\_Set\_Addr}  & Out & 16 & Data address for \texttt{lw}/\texttt{sw}, taken from \texttt{ALU\_Result} \\
+    \texttt{Mem\_Set\_Addr\_en} & Out & 1 & 0 selects the PC path into the address mux (instruction fetch), 1 selects the data address \\
+    \texttt{Mem\_write}      & Out & 16 & Store data, taken from \texttt{Reg\_A} \\
+    \texttt{Mem\_write\_en}  & Out & 1  & Memory write enable; asserted only in \texttt{SW} \\
+    \texttt{IR\_En}          & Out & 1  & Holds the fetched word into the instruction register; asserted only in \texttt{DECODE} \\
+    \texttt{Reg\_Addr\_A}    & Out & 3  & Read port A address (\texttt{sw} source, \texttt{beq} operand) \\
+    \texttt{Reg\_Addr\_B}    & Out & 3  & Read port B address, the first ALU operand \\
+    \texttt{Reg\_Addr\_C}    & Out & 3  & Read port C address, the second ALU operand for RRR-type \\
+    \texttt{Reg\_Addr}       & Out & 3  & Write port address, always the rA field \\
+    \texttt{Reg\_write}      & Out & 16 & Write data: \texttt{ALU\_Result}, \texttt{Mem\_Output}, or \texttt{PC\_value} \\
+    \texttt{Reg\_w\_en}      & Out & 1  & Register file write enable \\
+    \texttt{Opcode}          & Out & 3  & Passed to the ALU; \texttt{IR(15\,downto\,13)} \\
+    \texttt{Immediate}       & Out & 16 & Formatted immediate, sign- or zero-extended as the instruction requires \\
+    \texttt{Read\_Immediate} & Out & 1  & 1 selects \texttt{Immediate} as the ALU's second operand, 0 selects \texttt{Q\_C} \\
+    \texttt{Read\_PC}        & Out & 1  & 1 selects PC${}+{}$1 as the ALU's first operand, used only by \texttt{beq} \\
     \bottomrule
   \end{tabular}
-  \caption{<Component 1> ports.}
+  \caption{Controller ports.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp1_rtl}{0.9}{RTL diagram of <Component 1>.}
-% Text describing how the pieces work together.
+% \projfig{controller_rtl}{0.9}{RTL diagram of the Controller.}
+Structurally the Controller is almost all control logic, so its RTL diagram is
+dominated by the state register and the two decode paths that fan out of it.
+The only datapath elements are the two immediate formatters, both purely
+combinational:
+
+\begin{itemize}
+  \item \texttt{Imm\_Sign} sign-extends \texttt{IR(6 downto 0)} to 16 bits.
+    RRI-type immediates (\texttt{addi}, \texttt{lw}, \texttt{sw},
+    \texttt{beq}) are signed, covering $-64$ to $63$, and the ALU adds them as
+    signed values.
+  \item \texttt{Imm\_Wide} zero-extends \texttt{IR(9 downto 0)} to 16 bits for
+    \texttt{lui}. The shift-by-six is done inside the ALU, not here, so the
+    Controller passes the raw ten-bit field rather than a pre-shifted value.
+\end{itemize}
+
+
+The next-state logic dispatches on \texttt{Mem\_Output(15 downto 13)}
+rather than on \texttt{IR(15 downto 13)}. The instruction register is loaded on
+the clock edge leaving \texttt{DECODE}, so \texttt{IR} still holds the
+\emph{previous} instruction while the dispatch decision is being made.
+Decoding the memory output directly avoids adding a state purely to wait for
+\texttt{IR} to settle. Once the machine is in an execute state, \texttt{IR} is
+valid and every register address and immediate field is taken from it.
+
+Second, the link value for \texttt{jalr} is taken from \texttt{PC\_value}
+rather than being computed in the ALU. That leaves the ALU free to compute the
+jump target as \texttt{Q\_B}${}+{}$\texttt{r0} in the same state, so
+\texttt{jalr} retires in one execute state instead of two. Because the register
+file reads asynchronously, the degenerate case \texttt{jalr rA, rA} still works:
+\texttt{Q\_B} is captured before the write edge.
 
 \subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp1_fsm}{0.75}{State transition diagram for <Component 1>.}
+% \projfig{controller_fsm}{0.75}{State transition diagram for the Controller.}
+The Controller is an eleven-state Moore machine. The state register is
+synchronous and resets to \texttt{FETCH} whenever \texttt{Start} is low, which
+is how the bootloader holds the CPU off until the program is in memory.
 
-\subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
+\begin{description}
+  \item[\texttt{FETCH}] All outputs at their defaults. With
+    \texttt{Mem\_Set\_Addr\_en} low the address mux is on the PC path, so the
+    memory sees the program counter and registers that address on the edge out
+    of this state.
+  \item[\texttt{FETCH2}] Also silent. This state exists solely to cover the
+    one-cycle read latency of the synchronous block RAM: the address is
+    captured on the edge into \texttt{FETCH2}, and the instruction word is
+    valid on \texttt{Mem\_Output} for the whole of the following state, which
+    is what the dispatch logic needs.
+  \item[\texttt{DECODE}] Asserts \texttt{IR\_En}, storing the fetched word.
+    The next state is chosen from \texttt{Mem\_Output(15 downto 13)}: \texttt{000}
+    and \texttt{010} both go to \texttt{RRR}, \texttt{001} to \texttt{ADDI},
+    \texttt{011} to \texttt{LUI}, \texttt{100} to \texttt{SW}, \texttt{101} to
+    \texttt{LW}, \texttt{110} to \texttt{BEQ}, and \texttt{111} to
+    \texttt{JALR}.
+  \item[\texttt{RRR}] Serves both \texttt{add} and \texttt{nand}, which differ
+    only in the opcode handed to the ALU. Reads rB and rC, writes
+    \texttt{ALU\_Result} to rA, and advances the PC.
+  \item[\texttt{ADDI}] Reads rB, selects the sign-extended immediate, writes
+    \texttt{ALU\_Result} to rA, and advances the PC.
+  \item[\texttt{LUI}] Selects the wide immediate and writes the shifted result
+    to rA. No register is read; the ALU ignores its first operand for this
+    opcode.
+  \item[\texttt{SW}] Drives the ALU result onto the memory address port and
+    \texttt{Reg\_A} onto the write data port with \texttt{Mem\_write\_en}
+    asserted, then advances the PC. One state is enough because a write does
+    not need the data to come back.
+  \item[\texttt{LW}] Presents the address only. \texttt{PC\_En} and
+    \texttt{Reg\_w\_en} both stay low, because the loaded word has not arrived
+    yet.
+  \item[\texttt{LOAD\_A}] The second half of \texttt{lw}. The data address is
+    still driven and still selected --- releasing it here would point the
+    memory back at the PC --- and \texttt{Mem\_Output} is written into rA. The
+    PC advances and the instruction retires.
+  \item[\texttt{BEQ}] Reads rA and rB, selects PC${}+{}$1 and the sign-extended
+    immediate into the ALU so the target is computed as PC${}+{}1+{}$offset,
+    and drives \texttt{PC\_Sel} directly from \texttt{EQ\_flag}. The comparator
+    hangs off the register file's A and B ports and does not contend with the
+    ALU, so the compare and the branch fit in one state. This is the longest
+    combinational path in the design and is the first place to look if timing
+    closure ever becomes a problem.
+  \item[\texttt{JALR}] Writes \texttt{PC\_value} to rA as the link, computes
+    the target in the ALU, and forces \texttt{PC\_Sel} high because the jump is
+    unconditional.
+\end{description}
+
+Every execute state returns to \texttt{FETCH}, except \texttt{LW}, which goes
+to \texttt{LOAD\_A} first. That gives four clock cycles for every instruction
+and five for \texttt{lw} --- 40~ns and 50~ns respectively at 100~MHz.
+
 
 \subsection{ALU}
 % Short description of the component (similar to Sec. 1.3).
@@ -307,75 +543,313 @@ Within the Bootloader di
 % If applicable. Width, depth, contents (for ROM), control signals.
 
 \subsection{UART Receiver}
-% Short description of the component (similar to Sec. 1.3).
+The UART receiver recovers bytes from the Basys-3's USB--UART bridge and
+assembles them into the 16-bit words the rest of the bootloader works in. It
+handles three separate problems: crossing from the asynchronous serial line
+into the 100~MHz clock domain, recovering bit timing from a line that carries
+no clock, and pairing bytes into words.
+
+It is a block within \texttt{bootloader.vhd} rather than a standalone entity.
+The two are described separately here because they are separate blocks on the
+bootloader's RTL diagram and were developed and tested as separate pieces, but
+they compile as one design unit. The signals listed below are therefore
+internal signals, not entity ports; only \texttt{RsRx} crosses the entity
+boundary.
 
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
-    \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
+    \textbf{Signal} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{clk}        & In  & 1  & 100~MHz system clock \\
+    \texttt{reset}      & In  & 1  & Synchronous, active high; returns the receiver to \texttt{ST\_IDLE} \\
+    \texttt{RsRx}       & In  & 1  & Raw serial line from the USB--UART bridge. Idles high; asynchronous to \texttt{clk} \\
+    \midrule
+    \texttt{rx\_bit}    & Int & 1  & \texttt{RsRx} after two-stage synchronisation; the value the receiver actually samples \\
+    \texttt{rx\_byte}   & Out & 8  & The most recently received byte, valid when \texttt{byte\_valid} is high \\
+    \texttt{byte\_valid}& Out & 1  & One-clock pulse, asserted once per correctly framed byte \\
+    \texttt{rx\_data}   & Out & 16 & Assembled word, high byte first. Feeds both the payload terminal count register and the memory write data port \\
+    \texttt{word\_valid}& Out & 1  & One-clock pulse per complete word. This is the ``\texttt{Packet\_Ready}'' signal on the RTL diagram \\
     \bottomrule
   \end{tabular}
-  \caption{<Component 7> ports.}
+  \caption{UART receiver signals. \texttt{Int} marks an internal signal that is
+    neither an input nor an output of the block.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp7_rtl}{0.9}{RTL diagram of <Component 7>.}
-% Text describing how the pieces work together.
+% \projfig{uart_rtl}{0.9}{RTL diagram of the UART receiver and byte-pair assembler.}
+The receiver is built from four pieces in series: a synchroniser, a bit-timing
+counter, a shift register, and a byte-pair assembler.
+
+\textbf{Synchroniser.} \texttt{RsRx} arrives from an off-chip bridge with no
+relationship to the system clock, so sampling it directly risks metastability
+on the flip-flops that consume it. A two-stage shift register
+(\texttt{rx\_sync}) absorbs that: stage~0 is the fresh sample and is the one
+allowed to go metastable, and stage~1 is the clean value everything downstream
+uses.
+
+\textbf{Bit timing.} At 115200~baud on a 100~MHz clock,
+$\texttt{CLKS\_PER\_BIT} = 100{,}000{,}000 / 115{,}200 = 868$ and
+$\texttt{HALF\_BIT} = 434$. Both are computed from the \texttt{CLK\_FREQ\_HZ}
+and \texttt{BAUD\_RATE} generics, The integer division truncates,
+giving an accumulated error of about 0.06\% over a ten-bit frame, far within the
+margin of error of the framing.
+
+\textbf{Shift register.} Data bits are shifted into \texttt{byte\_reg} from the
+top, since 8N1 sends the least significant bit first. The byte is transferred
+to \texttt{rx\_byte} and \texttt{byte\_valid} is pulsed only if the stop bit is
+found high; a frame with a bad stop bit is discarded silently rather than
+handed on as corrupt data.
+
+\textbf{Byte-pair assembler.} A single flag, \texttt{byte\_phase}, tracks
+whether the next byte is the high or the low half of a word. The first byte is
+stored into \texttt{high\_byte}; the second is concatenated with it into
+\texttt{rx\_data} and \texttt{word\_valid} is pulsed. High byte first matches
+the big-endian framing in \texttt{uploader.py}.
+
+Both \texttt{byte\_valid} and \texttt{word\_valid} are generated by assigning
+\texttt{'0'} as the first statement in their clocked process and overwriting it
+only on the cycle the event occurs. That produces a clean one-clock pulse in
+the \texttt{clk} domain, which matters: it means the bootloader FSM can treat
+the signal as a level and never has to edge-detect something that stays high
+for many cycles.
 
 \subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp7_fsm}{0.75}{State transition diagram for <Component 7>.}
+% \projfig{uart_fsm}{0.75}{State transition diagram for the UART receiver.}
+The receiver is a four-state Moore machine.
+
+\begin{description}
+  \item[\texttt{ST\_IDLE}] Counters cleared, waiting for the line to fall.
+    A high-to-low transition on \texttt{rx\_bit} is a possible start bit and
+    moves the machine to \texttt{ST\_START}.
+  \item[\texttt{ST\_START}] Counts to \texttt{HALF\_BIT} and re-checks the
+    line. If it is still low the edge was a real start bit and the machine
+    proceeds to \texttt{ST\_BITS}; if it has gone high the edge was noise
+    and the machine returns to \texttt{ST\_IDLE}. Landing on the midpoint here
+    is what puts every later sample in the centre of its bit.
+  \item[\texttt{ST\_BITS}] Waits a full \texttt{CLKS\_PER\_BIT} between
+    samples, shifting each one into \texttt{byte\_reg}. After eight bits
+    (\texttt{bit\_index} reaching 7) it moves to \texttt{ST\_STOP}.
+  \item[\texttt{ST\_STOP}] Waits one more bit period and checks for a high stop
+    bit. If the framing is good, \texttt{rx\_byte} is updated and
+    \texttt{byte\_valid} pulses. Either way the machine returns to
+    \texttt{ST\_IDLE}, ready for the next start bit.
+\end{description}
 
 \subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
+The receiver contains no addressed memory. It holds two 8-bit registers ---
+\texttt{byte\_reg}, the shift register the incoming frame is assembled in, and
+\texttt{high\_byte}, which holds the first byte of a pair while the second
+arrives --- plus the 16-bit \texttt{rx\_data} output register. There is no
+FIFO: a word must be consumed by the bootloader FSM before the next one
+completes. At 115200~baud a byte takes roughly 87~$\mu$s to arrive and the FSM
+needs two clock cycles to write a word, so the margin is about four orders of
+magnitude. A FIFO would be needed only if the FSM were to stall for tens of milliseconds,
+in which case we have \textit{much} bigger problems. 
 
 \subsection{Bootloader Controller and Registers}
-% Short description of the component (similar to Sec. 1.3).
+The bootloader is what makes the program a piece of data rather than a piece of
+the bitstream. Without it, changing a single instruction means regenerating the
+memory IP and rerunning implementation; with it, the same bitstream runs any
+program that fits in memory, loaded in well under a second.
+
+It owns the memory write port from power-up until the payload is complete, then
+releases it and starts the CPU. Three blocks sit downstream of the UART
+receiver: a Moore FSM, a terminal-count register holding the expected word
+count, and a counter that doubles as the write address.
 
 \subsubsection{Description of Ports}
+These are the ports of the \texttt{Bootloader} entity, which encloses both this
+block and the UART receiver of Section~2.7.
+
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{clk}        & In  & 1  & 100~MHz system clock \\
+    \texttt{reset}      & In  & 1  & Synchronous, active high. Wired to btnC (U18); clears the FSM, both registers, and the UART receiver so a new program can be loaded without reprogramming the board \\
+    \texttt{RsRx}       & In  & 1  & USB--UART receive line, pin B18. Idles high \\
+    \midrule
+    \texttt{Boot\_Addr} & Out & 16 & Write address, \texttt{payload\_ct}${}+{}$\texttt{BASE\_ADDR} \\
+    \texttt{Boot\_Data} & Out & 16 & Write data, driven straight from \texttt{rx\_data} \\
+    \texttt{Boot\_We}   & Out & 1  & Write enable, high for exactly one clock per word \\
+    \texttt{Boot\_Done} & Out & 1  & Goes high once the whole payload is in memory and stays high. Switches the boot mux over to the CPU and releases the Controller's \texttt{Start} \\
+    \texttt{Boot\_Busy} & Out & 1  & High while a load is in progress; available for an LED or debug pin \\
     \bottomrule
   \end{tabular}
-  \caption{<Component 8> ports.}
+  \caption{Bootloader entity ports.}
+\end{table}
+
+\begin{table}[H]
+  \centering
+  \small
+  \begin{tabular}{@{}llp{0.5\textwidth}@{}}
+    \toprule
+    \textbf{Generic} & \textbf{Default} & \textbf{Description} \\
+    \midrule
+    \texttt{CLK\_FREQ\_HZ} & \texttt{100\_000\_000} & System clock frequency, used with \texttt{BAUD\_RATE} to derive the bit period \\
+    \texttt{BAUD\_RATE}    & \texttt{115\_200}      & Must match the \texttt{--baud} setting in \texttt{uploader.py} \\
+    \texttt{BASE\_ADDR}    & \texttt{0}             & First memory address the payload lands on. Zero, so execution starts at the first word loaded \\
+    \bottomrule
+  \end{tabular}
+  \caption{Bootloader generics.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp8_rtl}{0.9}{RTL diagram of <Component 8>.}
-% Text describing how the pieces work together.
+% \projfig{bootloader_rtl}{0.9}{RTL diagram of the bootloader.}
+Three registers and a comparator sit between the UART receiver and the memory
+write port.
+
+\textbf{Payload TC} (\texttt{payload\_tc}, 16 bits) stores the first word off
+the UART --- the number of instruction words to expect. It loads on
+\texttt{tc\_en}, which the FSM asserts for exactly one cycle while
+\texttt{rx\_data} still holds the size word.
+
+\textbf{Payload Counter} (\texttt{payload\_ct}, 16 bits) counts words written.
+It is cleared by \texttt{count\_clr} and incremented by \texttt{count\_en}. It
+serves double duty as the write address, which is what keeps the design from
+needing a separate address register: added to \texttt{BASE\_ADDR}, it drives
+\texttt{Boot\_Addr} directly, so word $n$ necessarily lands at
+\texttt{BASE\_ADDR}${}+n$ and the address can never drift out of step with the
+count.
+
+\textbf{Comparator} produces \texttt{count\_done} when
+\texttt{payload\_ct = payload\_tc}. This is the only condition that ends the
+load. Because the comparison is for equality rather than ``greater than or
+equal'', a payload longer than its declared count is simply ignored --- the FSM
+has already reached \texttt{S\_DONE} and stops writing --- which is the
+behaviour the testbench checks with a trailing \texttt{0xDEAD}.
+
+\texttt{Boot\_Data} is wired straight from \texttt{rx\_data} with no register
+in between. The word is stable from the cycle \texttt{word\_valid} pulses until
+the next word completes, tens of thousands of cycles later, so there is nothing
+for an extra register to buy.
+
+The one signal that leaves this block and changes the rest of the machine is
+\texttt{Boot\_Done}. In the top level it selects the boot mux, gates
+\texttt{IR\_En} and \texttt{Reg\_w\_en}, and drives the Controller's
+\texttt{Start}. While it is low the PC is force-fed zero every clock, so the PC
+is already sitting at address~0 the instant the CPU is released and the program
+counter needs no reset port of its own.
 
 \subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp8_fsm}{0.75}{State transition diagram for <Component 8>.}
+% \projfig{bootloader_fsm}{0.75}{State transition diagram for the bootloader.}
+A six-state Moore machine drives the three control signals plus the done flag.
+
+\begin{description}
+  \item[\texttt{S\_IDLE}] Everything quiet, waiting for the first
+    \texttt{word\_valid}. \texttt{Boot\_Done} is low, so the CPU is held off.
+  \item[\texttt{S\_GET\_SIZE}] One cycle with \texttt{tc\_en} asserted,
+    storing the size word. Unconditionally advances.
+  \item[\texttt{S\_ARM}] Asserts \texttt{count\_clr}, zeroing the counter. If
+    \texttt{count\_done} is already true --- a declared size of zero --- it goes
+    straight to \texttt{S\_DONE}; otherwise it waits for the first data word.
+  \item[\texttt{S\_WRITE}] One cycle with \texttt{w\_en} and \texttt{count\_en}
+    both asserted. The word is written and the counter advances on the way out,
+    so the address is already correct for the next word.
+  \item[\texttt{S\_WAIT}] Checks \texttt{count\_done} first: if the payload is
+    complete the machine finishes, otherwise it waits for the next
+    \texttt{word\_valid} and returns to \texttt{S\_WRITE}. This is where the
+    machine spends nearly all of its time, since a word takes about 174~$\mu$s
+    to arrive and the write takes two clock cycles.
+  \item[\texttt{S\_DONE}] Asserts \texttt{done\_flag}. There is no path out
+    except \texttt{reset}: memory belongs to the CPU from here on, and letting
+    the bootloader reclaim it mid-execution would corrupt a running program.
+\end{description}
+
+Splitting \texttt{S\_WRITE} and \texttt{S\_WAIT} rather than writing from a
+single state is what guarantees \texttt{Boot\_We} is exactly one clock wide.
+Since \texttt{word\_valid} is itself a one-clock pulse, the machine can only
+leave \texttt{S\_WAIT} once per word, and a word can never be written twice.
 
 \subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
+The bootloader contains no memory of its own; it drives the write port of the
+memory described in Section~2.3. That memory is a single-port block RAM,
+16~bits wide and 65536~words deep, generated by the Block Memory Generator IP.
+The bootloader writes to it through \texttt{Boot\_Addr}, \texttt{Boot\_Data},
+and \texttt{Boot\_We}, all three of which are switched over to the CPU together
+by the boot mux when \texttt{Boot\_Done} rises, so there is never a cycle in
+which half the port belongs to each.
+
+Its own state is three registers: \texttt{payload\_tc} (16 bits, the expected
+word count), \texttt{payload\_ct} (16 bits, words written so far and the
+current write address), and the state register itself. The 16-bit count field
+is what bounds a payload to 65535 words, which matches the depth of the memory.
 
 %==============================================================
 \section{Design Validation}
 % Modular strategy: verify each component in simulation and hardware
 % before integration. Parallel structure to Section 2.
 
-\subsection{<Component 1>}
-% Testing strategy and success criteria.
+\subsection{Controller}
+The Controller has no data output to check, so ``correct'' cannot be judged by
+looking at a result. What matters is whether, in each state, the right control
+lines are asserted and every other one is not. The testbench in
+\texttt{controller\_tb.vhd} therefore checks both halves of that: for every
+instruction it verifies the signals that instruction should assert, and
+verifies that the signals it should not assert are low.
+
+Two techniques make the checks meaningful rather than merely non-zero. First,
+each of the four data inputs is held at a distinctive constant ---
+\texttt{ALU\_Result} at \texttt{0x1234}, \texttt{Reg\_A} at \texttt{0xA5A5},
+\texttt{PC\_value} at \texttt{0x0100}, and the loaded word at \texttt{0xBEEF}.
+A check on \texttt{Reg\_write} then proves \emph{which} source the output is
+wired to, so a mux select that is inverted or a data path that is crossed shows
+up as a failure rather than passing by coincidence. Second, \texttt{IR} is
+deliberately left holding the previous instruction during \texttt{DECODE}, so a
+Controller that dispatched on \texttt{IR} instead of \texttt{Mem\_Output} would
+branch to the wrong execute state and fail the checks that follow.
+
+Ten cases cover all eight opcodes and the field-formatting edge cases:
+\texttt{add} and \texttt{nand} (which share the \texttt{RRR} state and should
+differ only in opcode and register fields), \texttt{addi} with both a negative
+and a positive immediate (checking that $-3$ sign-extends to \texttt{0xFFFD}
+and $+5$ to \texttt{0x0005}), \texttt{lui} (checking that the immediate arrives
+zero-extended as \texttt{0x0155} and \emph{not} pre-shifted to \texttt{0x5540},
+since the shift belongs to the ALU), \texttt{beq} taken and not taken,
+\texttt{jalr} (checking that the link comes from \texttt{PC\_value} while the
+target comes from the ALU, and that \texttt{Reg\_Addr\_C} is forced to
+\texttt{r0}), \texttt{sw}, and \texttt{lw} across both of its states. Failures
+are counted and reported rather than aborting the run, so one broken case does
+not hide the rest, and the run ends with an explicit pass or fail message.
+
+Success criteria: zero reported errors, and the state sequence observed in the
+waveform matches the state diagram for every instruction --- four states for
+each instruction except \texttt{lw}, which takes five.
+
+% NOTE: controller_tb.vhd predates the Start input and the FETCH2 state. Its
+% component declaration has no Start port, and exec_instr steps FETCH ->
+% DECODE directly, so it will not elaborate against the current entity.
+% Update the component declaration, tie Start high in the stimulus, and add
+% one extra clock in exec_instr before rerunning and capturing waveforms.
 
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp1_sim}{0.95}{Behavioral simulation of <Component 1>.}
+% \projfig{controller_sim}{0.95}{Behavioral simulation of the Controller.}
+% Annotate: (1) the FETCH -> FETCH2 -> DECODE sequence with IR_En asserted only
+% in DECODE; (2) an RRR instruction showing Reg_Addr_B/C taken from the IR
+% fields and Reg_write following ALU_Result; (3) the ADDI immediate sign
+% extension; (4) BEQ taken vs not taken, showing PC_Sel following EQ_flag;
+% (5) the LW -> LOAD_A pair, showing Mem_Set_Addr_en held through both states
+% and Reg_w_en asserted only in LOAD_A.
 
 \subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+The Controller is not separately observable on the board --- it has no output
+pins and every one of its control signals is internal --- so it is validated
+indirectly. Running \texttt{program.s}, which exercises all eight opcodes and
+leaves a known value in r7 after each group, confirms the Controller sequenced
+each instruction correctly, since a wrong control signal produces a wrong value
+on the display. Section~3.4 covers that test.
+% Optionally: an ILA capture of the state register and the control signals
+% gives direct visibility if the indirect evidence is not enough.
 
-\subsection{<Component 2>}
+\subsection{ALU}
 % Testing strategy and success criteria.
 
 \subsubsection{Behavioral Simulations}
@@ -385,7 +859,7 @@ Within the Bootloader di
 \subsubsection{Hardware Validation}
 % Scope / logic analyzer captures, photos, or video link. Annotate.
 
-\subsection{<Component 3>}
+\subsection{Memory}
 % Testing strategy and success criteria.
 
 \subsubsection{Behavioral Simulations}
@@ -395,7 +869,7 @@ Within the Bootloader di
 \subsubsection{Hardware Validation}
 % Scope / logic analyzer captures, photos, or video link. Annotate.
 
-\subsection{<Component 4>}
+\subsection{Register File}
 % Testing strategy and success criteria.
 
 \subsubsection{Behavioral Simulations}
@@ -405,7 +879,7 @@ Within the Bootloader di
 \subsubsection{Hardware Validation}
 % Scope / logic analyzer captures, photos, or video link. Annotate.
 
-\subsection{<Component 5>}
+\subsection{Program Counter}
 % Testing strategy and success criteria.
 
 \subsubsection{Behavioral Simulations}
@@ -415,7 +889,7 @@ Within the Bootloader di
 \subsubsection{Hardware Validation}
 % Scope / logic analyzer captures, photos, or video link. Annotate.
 
-\subsection{<Component 6>}
+\subsection{Instruction Register}
 % Testing strategy and success criteria.
 
 \subsubsection{Behavioral Simulations}
@@ -425,25 +899,100 @@ Within the Bootloader di
 \subsubsection{Hardware Validation}
 % Scope / logic analyzer captures, photos, or video link. Annotate.
 
-\subsection{<Component 7>}
-% Testing strategy and success criteria.
+\subsection{UART Receiver}
+\label{sec:boot-sim}
+The UART receiver and the bootloader FSM compile as one entity, so they share a
+testbench (\texttt{bootloader\_tb.vhd}) and are tested through the same
+stimulus. The receiver is nonetheless verified on its own terms first, by
+watching its internal signals rather than the memory write port.
+
+Testing a UART in simulation at its real baud rate is impractical: at
+115200~baud one byte takes 868 clock cycles per bit, so a short program would
+need tens of milliseconds of simulated time. The bit period is derived from the
+\texttt{CLK\_FREQ\_HZ} and \texttt{BAUD\_RATE} generics rather than hard-coded,
+which makes simulation practical.
+
+The stimulus process drives \texttt{RsRx} directly with a \texttt{send\_byte}
+procedure that reproduces a real 8N1 frame: a low start bit, eight data bits
+least significant first, a high stop bit, and an idle period between frames. A
+\texttt{send\_word} wrapper sends the high byte then the low byte, matching the
+order \texttt{uploader.py}.
 
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp7_sim}{0.95}{Behavioral simulation of <Component 7>.}
+% \projfig{uart_sim}{0.95}{Behavioral simulation of the UART receiver.}
+% Annotate: (1) one full 8N1 frame on RsRx with the start, data, and stop bits
+% marked; (2) the ST_IDLE -> ST_START -> ST_BITS -> ST_STOP sequence alongside
+% clk_count, showing the HALF_BIT re-check and the sample points landing mid-bit;
+% (3) byte_reg filling LSB-first; (4) byte_valid as a single-clock pulse;
+% (5) two byte_valid pulses producing one word_valid, with rx_data showing the
+% first byte in the high half.
 
 \subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+The receiver is validated on hardware by the fact that the upload works at all:
+a program that assembles correctly on the host and produces the right values on
+the seven-segment display after loading is direct evidence that every byte
+crossed the link and was reassembled in the right order. A single dropped or
+misframed byte would shift every subsequent word by one byte and produce
+garbage instructions.
+% For a direct capture: probe RsRx on the JA Pmod header with the scope and
+% show one frame at 115200 baud alongside the expected bit pattern, or use an
+% ILA on rx_byte and byte_valid to show bytes arriving as uploader.py sends them.
 
-\subsection{<Component 8>}
-% Testing strategy and success criteria.
+\subsection{Bootloader Controller and Registers}
+The bootloader is checked at its memory write port, since that is its entire
+externally visible effect. The testbench sends a complete payload and monitors
+\texttt{Boot\_We}, asserting on every write that the address is the one
+expected --- a counter in the monitor process increments independently, so an
+address that skips, repeats, or restarts fails immediately rather than being
+noticed later as a wrong program.
+
+The payload is deliberately constructed to catch the two failure modes this
+design is most exposed to. It declares four words, sends four distinguishable
+words (\texttt{0x1111} through \texttt{0x4444}), and then sends a fifth,
+\texttt{0xDEAD}, which must be ignored. That last word tests the boundary
+condition directly: if \texttt{count\_done} were a ``greater than'' comparison,
+or if \texttt{S\_DONE} had a path back into \texttt{S\_WRITE}, the extra word
+would be written and the write count would come out at five.
+
+Success criteria, all asserted at the end of the run: exactly four writes
+occur; they land at addresses 0 through 3 in order; each carries the word that
+was actually sent; the trailing word is ignored; and \texttt{Boot\_Done} is
+high once the payload is complete.
 
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp8_sim}{0.95}{Behavioral simulation of <Component 8>.}
+% \projfig{bootloader_sim}{0.95}{Behavioral simulation of the bootloader.}
+% Annotate: (1) the header word arriving and S_IDLE -> S_GET_SIZE -> S_ARM,
+% with payload_tc latching 0x0004 and payload_ct clearing; (2) one full
+% word_valid -> S_WRITE -> S_WAIT cycle, showing Boot_We exactly one clock wide
+% and Boot_Addr incrementing on the way out; (3) count_done rising and the
+% transition to S_DONE; (4) the trailing 0xDEAD arriving with Boot_We staying
+% low; (5) Boot_Done high and stable.
 
 \subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+On hardware the load is visible on the seven-segment display without any test
+equipment: while \texttt{Boot\_Done} is low the display shows
+\texttt{Boot\_Addr}, so the word count climbs as the payload arrives and then
+freezes at the final address, at which point the display switches to register~7
+and the CPU begins executing. That single behaviour confirms three things at
+once --- that words are arriving, that the address counter is advancing one per
+word, and that \texttt{Boot\_Done} rose and handed the memory over.
+
+\texttt{uploader.py} reports the number of words and bytes it sent, so the
+value the display freezes at can be compared against what the host claims to
+have transmitted. A mismatch localises the fault immediately: agreement with a
+program that then misbehaves points at the CPU rather than the load, while a
+short count points at the link or the receiver.
+
+Pressing btnC (U18) resets the bootloader and the register file, so a second
+program can be uploaded without reprogramming the FPGA. Loading two different
+programs in succession and getting the correct result from each is the
+strongest single check that the reset path is complete and that no state
+survives from one load to the next.
+% Include: a photo or short video of the display counting up during the load
+% and switching to r7's value, plus the uploader.py console output for the same
+% run so the word counts can be compared side by side.
 
 \subsection{<Subsystem 1>}
 % Use only if testing needs to go deeper than top level + components.
@@ -499,26 +1048,39 @@ Within the Bootloader di
 \end{table}
 
 \subsection{Division of Labor}
-% How the work was split and whether the strategy worked.
+Jagger was responsible for the CPU control FSM, the bootloader FSM, and the UART receiver
+He also wrote the assembler and the uploader script, alongside writing the top level file.
+
 
 \subsection{Future Work}
 % Next steps to expand or improve the design.
-
+The next natural extension of this project would be to implement pipelining. This would likely require moving
+from a FSM centric design to a more sequential logic design. This rework would be a fundamental rewrite of the project,
+but would allow for a much higher clock frequency and throughput. The difficulty and complexity of the project would also skyrocket.
+Other considerations for improvement would be error checking on the UART receiver, and a more robust bootloader protocol. 
+The current bootloader protocol is very simple and does not have any error checking or correction. 
+This could be improved by adding a checksum or CRC to the payload, and having the bootloader verify it 
+before writing to memory.
 %==============================================================
 \section{Acknowledgements}
 % Outside sources of information or code; helpful people.
 % No need to cite the textbook, daily exercises, or course videos.
-
+Huge thank you Bruce Jacob for creating the RiSC-16 architecture and providing the original assembler. We used every resourc \href{https://user.eng.umd.edu/~blj/risc/}{here}.
+Tad was also very helpful in providing guidance and advice early on, steering us away from a complex datapath design.
 %==============================================================
 \section{Conclusions}
 % Brief summary, closing remarks, advice to future students.
-
-%==============================================================
+This project was an absolute monster to complete in the 2 weeks we had. I (Jagger) am very happy we chose such an ambitious project, 
+and I am very proud of the final result. The bootloader and UART receiver were a lot of fun to implement, and I learned a lot about 
+FSM design and VHDL in general. I also have a much better understanding of the basics of how a CPU works, and how RISC architectures work in general.
 \appendix
 
 \section{VHDL Source Code}
 % All design code submitted in a single zip; list the files here.
 \begin{itemize}
+  \item \texttt{controller.vhd} --- the CPU control FSM
+  \item \texttt{bootloader.vhd} --- UART receiver, byte-pair assembler,
+    payload registers, and the load FSM
   \item \texttt{<file>.vhd} --- <short description>
   \item \texttt{<file>.vhd} --- <short description>
 \end{itemize}
@@ -526,6 +1088,10 @@ Within the Bootloader di
 \section{VHDL Testbenches}
 % All testbench code submitted in a single zip; list the files here.
 \begin{itemize}
+  \item \texttt{controller\_tb.vhd} --- self-checking testbench covering all
+    eight opcodes and both \texttt{lw} states
+  \item \texttt{bootloader\_tb.vhd} --- self-checking testbench driving a full
+    UART payload and monitoring the memory write port
   \item \texttt{<file>\_tb.vhd} --- <short description>
   \item \texttt{<file>\_tb.vhd} --- <short description>
 \end{itemize}
@@ -533,7 +1099,14 @@ Within the Bootloader di
 \section{Support Script Source Code}
 % List the script file(s) included in the submission zip.
 \begin{itemize}
-  \item \texttt{<script>.py} --- <short description>
+  \item \texttt{assembler/assembler.c} --- two-pass RiSC-16 assembler
+  \item \texttt{host/uploader.py} --- serial uploader; frames the hex file into
+    the bootloader's wire protocol
+  \item \texttt{upload.ps1} --- PowerShell driver for the full
+    build--assemble--upload flow
+  \item \texttt{Makefile} --- the same flow for a POSIX shell
+  \item \texttt{requirements.txt} --- Python dependency (\texttt{pyserial})
+  \item \texttt{program.s} --- test program exercising all eight opcodes
 \end{itemize}
 
 \end{document}
