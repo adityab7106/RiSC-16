@@ -84,21 +84,42 @@ The verification proceeded in two stages. First, behavioral simulations were per
 %==============================================================
 \section{System Overview}
 % Plain English: overall goal, intended behavior, specifications met.
+The goal of this project was to build a working general-purpose processor on an FPGA that reads a program from memory and executes whatever that program specifies. The processor implements the RiSC-16 instruction set architecture, a 16-bit reduced instruction set with eight opcodes, eight general-purpose registers, and a uniform 16-bit word size for both instructions and data.\\
+\\
+Besides the processor, the secondary goal was to make the system programmable. Recompiling the entire FPGA design for every new test program is slow and highly undesirable. Thus, a host-side assembler and an upload path was developed so that new programs could be loaded over the USB-UART link in seconds, allowing for a more flexible demonstration.\\
+\\
+Once programmed, the processor begins fetching instructions from address zero of a unified memory that holds both program and data. Each instruction executes over several clock cycles rather than one: the controller steps through a fetch state that presents the program counter to memory, a decode state that captures the returned word and identifies its opcode, and one or more execute states that perform the operation and advance the program counter.\\
+\\
+The eight opcodes fall into three encoding formats. RRR-type instructions (add, nand) read two registers and write a third. RRI-type instructions (addi, lw, sw, beq) combine one register with a 7-bit signed immediate. RI-type instructions (lui, jalr) use a 10-bit field. Register 0 is hardwired to zero, which allows for greater flexibility in implementing certain instructions. Whatever value the program leaves in register 7 is displayed continuously as four hexadecimal digits on the seven-segment display. A beq instruction is added to the end of every program, resulting in an infinite branching to itself that effectively freezes the program counter and holds the result on the display indefinitely. Pressing reset clears the display and restarts execution.\\
+\\
+The circuit has several specifications that yields a successful design:\\
+\textbf{Functional Completeness:} All eight opcodes are accounted for and execute correctly, which is verified by a test program that implements each instruction and displays the result in register seven. Arithmetic, bitwise NAND, upper-immediate loading, memory store and load, conditional branching, and jump-and-link have all been verified to be working correctly.\\
+\textbf{Timing Closure:} The processor runs at the Basys3's 100 MHz with no clock division. Static timing analysis shows zero failing endpoints and 0.320 ns of worst-case setup slack, with hold and pulse-width checks also met. Nothing in the design depends on a slowed clock to work.\\
+\textbf{Robust Verification:} Both behavioral simulations and hardware validation proved that the system works as intended.\\
+\textbf{Programmability:} A single command assembles a source file and uploads it, causing new program tests to take seconds rather than several minutes that a full synthesis and implementation run requires.
+
 
 \subsection{Top-level Block Diagram}
 % Inputs on left, outputs on right. Label all ports, components, control signals.
 % \projfig{top_level_block}{0.9}{Top-level block diagram.}
+\projfig{Main_RTL.png}{0.9}{Top-level block diagram.}
+\projfig{bootloader_RTL}{0.9}{Top-level Bootloader block diagram.}
 
-\subsection{Description of Ports}
+\subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    clk    & In  & 1 & 100 MHz system clock \\
-    <port> & In  & <n> & <description> \\
-    <port> & Out & <n> & <description> \\
+    \texttt{Clk}             & In  & 1  & 100~MHz system clock \\
+    \texttt{Rst}           & In  & 1  & Asynchronous reset, driven by a pushbutton. Returns the program counter to address 0 and the controller to its fetch state.    \\
+    \texttt{RsRx} & In & 1 & USB-UART serial receive line. \\
+    \texttt{seg\_Port} & Out & 7 & Active-low cathode drivers for segments a through g of the seven-segment display. Displays one hexadecimal digit at a time; which digit is determined by anPort.\\
+    \texttt{an\_Port} & Out & 4 & Active-low anode enables for the four display digits, index 0 being the rightmost. Exactly one bit is low at any instant. Combined with segPort, displays the value of register 7. \\
+    
+    
     \bottomrule
   \end{tabular}
   \caption{Top-level ports.}
@@ -112,11 +133,11 @@ The verification proceeded in two stages. First, behavioral simulations were per
     of the word returning from memory and drives all of the datapath's mux
     selects, write enables, register addresses, and the sign- or zero-extended
     immediate.
-  \item[ALU] <Short description.>
-  \item[Memory] <Short description.>
-  \item[Register File] <Short description.>
-  \item[Program Counter] <Short description.>
-  \item[Instruction Register] <Short description.>
+  \item[ALU] An arithemetic logical unit selecting among three operations on two 16-bit operands based on the 3-bit opcode: signed addition for add, addi, lw, sw, beq, and jalr; bitwise NAND for nand; and a six-position left shift of the immediate for lui.
+  \item[Memory] A single-port synchronous block RAM generated by the Block Memory Generator IP, holding both instructions and data in a unified 16-bit-wide address space. Reads have one cycle of latency, so the address must be presented one clock before the data is valid. 
+  \item[Register File] Eight 16-bit registers with three asynchronous read ports and one synchronous write port, allowing an instruction to read up to three operands while writing a fourth in the same cycle. Register 0 is hardwired to zero and ignores writes, and a fourth dedicated read port exposes register 7 continuously for display.
+  \item[Program Counter] A 16-bit register holding the address of the instruction currently being fetched, loading a new value on the rising clock edge only when its enable input is asserted. Reset returns it to zero.
+  \item[Instruction Register] A 16-bit register that captures the word returned by memory during the decode state, holding it stable for the remainder of the instruction so the controller and datapath can read its fields while memory is reused for other purposes.
   \item[UART Receiver] An 8N1 serial receiver that recovers one byte per frame
     from the Basys-3 USB--UART bridge at 115200~baud, together with a byte-pair
     assembler that joins two consecutive bytes into one 16-bit word. It is a
@@ -127,7 +148,20 @@ The verification proceeded in two stages. First, behavioral simulations were per
     each following word into consecutive memory addresses, and then asserts
     \texttt{Boot\_Done} to hand the memory port and the CPU over to the
     Controller.
-  \item[Top Level] <Short description.>
+  \item[Top Level] Instantiates all components and connects them through the glue logic described below.
+  \item \textbf{Boot mux}: Three parallel 2:1 multiplexers switching memory's address, write-data, and write-enable inputs as a unit, selected by Boot\_Done. While Boot\_Done is low the bootloader owns the memory port; once it asserts, ownership transfers to the CPU for the remainder of operation. Switching all three together is what prevents a partially handed-over port from corrupting memory.
+
+  \item \textbf{PC next-address mux}: Selects the program counter's next value between the incrementer output for sequential execution and PC\_Write from the controller for taken branches and jumps, controlled by PC\_Sel.
+
+  \item \textbf{CPU memory address mux}: Selects memory's address between the program counter for instruction fetch and Mem\_Set\_Addr from the controller for lw and sw data access, controlled by Mem\_Set\_Addr\_en.
+
+  \item \textbf{ALU operand muxes}: Two 2:1 multiplexers on the ALU inputs. The first selects the first operand between register port B and the incrementer output, controlled by Read\_PC, which allows branch targets to be computed relative to PC+1. The second selects the second operand between register port C and the controller's immediate, controlled by Read\_Immediate, distinguishing RRR-type from immediate-type instructions.
+
+  \item \textbf{PC+1 incrementer}: A combinational 16-bit adder producing the address of the next sequential instruction. Its output serves three purposes: the default next-PC value, the base for branch target computation, and the link value written to a register by jalr.
+
+  \item \textbf{Equality comparator}: A combinational comparison of register ports A and B producing the EQ\_flag consumed by the controller during beq.
+
+  \item \textbf{Display mux}: Time-multiplexes the four hexadecimal nibbles of register 7 across the four seven-segment digits.
   % Glue logic to describe here: the boot mux (address, write data, and write
   % enable all switch from the bootloader to the CPU together on Boot_Done),
   % the PC next-address mux, the CPU memory address mux, the two ALU operand
@@ -317,7 +351,7 @@ build the immediate.
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{controller_rtl}{0.9}{RTL diagram of the Controller.}
+\projfig{Controller_RTL.png}{0.9}{Diagram of the Controller.}
 Structurally the Controller is almost all control logic, so its RTL diagram is
 dominated by the state register and the two decode paths that fan out of it.
 The only datapath elements are the two immediate formatters, both purely
@@ -350,7 +384,7 @@ file reads asynchronously, the degenerate case \texttt{jalr rA, rA} still works:
 \texttt{Q\_B} is captured before the write edge.
 
 \subsubsection{Finite State Machine (FSM) Diagram}
-% \projfig{controller_fsm}{0.75}{State transition diagram for the Controller.}
+\projfig{Controller_FSM}{0.75}{State transition diagram for the Controller.}
 The Controller is an eleven-state Moore machine. The state register is
 synchronous and resets to \texttt{FETCH} whenever \texttt{Start} is low, which
 is how the bootloader holds the CPU off until the program is in memory.
@@ -409,139 +443,172 @@ and five for \texttt{lw} --- 40~ns and 50~ns respectively at 100~MHz.
 
 \subsection{ALU}
 % Short description of the component (similar to Sec. 1.3).
-
+The ALU is an arithmetic logical unit that performs one of three operations on two 16-bit operands, selected by the 3-bit opcode taken directly from the instruction. Six of the eight RiSC-16 opcodes require signed addition, which are add and addi for arithmetic, lw and sw for address computation, and beq and jalr for target computation. Bitwise NAND and lui require their respective computations. Bitwise NAND is simply a nand operation performed on the value of register B and Register C/Immediate. For lui, the bottom ten bits of the Register C/Immediate are taken and concatenated with 6 zeros. The unit contains no state and no clock; its output settles within one clock period of its inputs changing, and the consuming register captures the result on the following edge.
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{RegB}             & In  & 16  & First operand. Normally register port B, but multiplexed to PC+1 when computing a branch target.\\
+    \texttt{RegC\_or\_Imm} & In & 16 & Second operand. Register port C for RRR-type instructions, or the sign-extended or zero-extended immediate for immediate-type instructions.\\
+    \texttt{Opcode} & In & 3 & Operation select, taken from IR(15 downto 13). 010 selects NAND, 011 selects the upper-immediate shift, all other values select signed addition.\\
+    \texttt{Result} & Out & 16 & Combinational result. Interpreted as a two's-complement sum, a bitwise NAND, or a shifted immediate depending on the opcode.\\
     \bottomrule
   \end{tabular}
-  \caption{<Component 2> ports.}
+  \caption{ALU ports.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp2_rtl}{0.9}{RTL diagram of <Component 2>.}
+\projfig{ALU_RTL}{0.6}{Diagram of ALU}
 % Text describing how the pieces work together.
 
-\subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp2_fsm}{0.75}{State transition diagram for <Component 2>.}
+\paragraph{} \textbf{Inputs and their multiplexers}: Both operands arrive through 2:1 multiplexers in the top level, not from fixed sources.
 
-\subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
+The first operand, RegB, comes from a mux selecting between register port Q\_B and the incrementer output PC\_plus1, controlled by Read\_PC. The controller asserts Read\_PC only during beq, so that the branch target is computed relative to PC+1 rather than a register value.
+
+The second operand, RegC\_or\_Imm, comes from a mux selecting between register port Q\_C and the controller's Immediate output, controlled by Read\_Immediate. Deasserted for RRR-type instructions, asserted for every immediate-type instruction.
+
+\textbf{Control input}: Opcode is taken directly from IR(15 downto 13) with no muxing. It drives an internal function-select mux choosing among the adder, the NAND array, and the shift.
+
+\textbf{Output fan-out}: Result is unmultiplexed but heavily shared. It feeds the register file's D\_in for arithmetic write-back, PC\_Write for branch and jump targets, and Mem\_Set\_Addr for lw/sw address computation. Which destination consumes it is determined by which enable the controller asserts, not by a mux on the ALU side.
 
 \subsection{Memory}
 % Short description of the component (similar to Sec. 1.3).
-
+Memory is a single-port synchronous RAM generated by the Block Memory Generator IP, holding instructions and data in one unified address space. Reads and writes share a single address port, so the controller must distinguish between instruction fetch and data access across separate states. The important timing property is that reads have one cycle of latency, so an address presented before a rising edge produces valid data on Q after that edge, which is why the controller has a distinct state to fetch and captures the result in the following one.
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{Clk}             & In  & 1  & 100 MHz system clock\\
+    \texttt{Addr} & In & 16 & Word address. Multiplexed between the program counter for fetch and the controller's computed address for lw/sw, and between the CPU and the bootloader during program load.\\
+    \texttt{D\_in} & In & 16 & Data to be written. Sourced from the controller for sw, or from the bootloader during program load.\\
+    \texttt{w\_enable} & In & 1 & Write enable. When asserted at a rising edge, D\_in is written to Addr; otherwise the memory is read-only for that cycle.\\
+    \texttt{Q} & Out & 16 & Data read from Addr, valid one clock after the address is presented. Interpreted as an instruction during fetch and as data during lw.\\
     \bottomrule
   \end{tabular}
-  \caption{<Component 3> ports.}
+  \caption{Memory ports.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp3_rtl}{0.9}{RTL diagram of <Component 3>.}
+\projfig{Memory_RTL}{0.6}{Diagram of Memory}
 % Text describing how the pieces work together.
+\paragraph{} \textbf{Address multiplexing}: The address port passes through two muxes in series. The outer one is the boot mux, selecting between the bootloader's address counter and the CPU's address, controlled by Boot\_Done. The inner one selects the CPU's address between the program counter for instruction fetch and the controller's Mem\_Set\_Addr for data access, controlled by Mem\_Set\_Addr\_en.
 
-\subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp3_fsm}{0.75}{State transition diagram for <Component 3>.}
+\textbf{Write-data multiplexing}: D\_in passes through the boot mux, selecting between the bootloader's assembled word and the controller's Mem\_write. The CPU side is unmultiplexed, since only sw writes.
+
+\textbf{Write-enable multiplexing}: w\_enable passes through the boot mux, selecting between the bootloader's write pulse and the controller's Mem\_write\_en. This mux and the two above share the same select line and must switch together.
+
+\textbf{Output fan-out}: Q is unmultiplexed and drives two destinations simultaneously: the instruction register's D\_in, and the controller's Mem\_Output input. The controller reads it directly during decode because the instruction register's output is not yet valid, and again during lw write-back where it supplies the loaded value.
 
 \subsubsection{Description of Memory}
 % If applicable. Width, depth, contents (for ROM), control signals.
+The memory is a single-port synchronous RAM instantiated from Xilinx's Block Memory Generator IP, configured as 65536 words × 16 bits. Each word holds either one instruction or one 16-bit data value; the architecture draws no distinction between them, so a single unified address space serves both roles. Both dimensions are fixed by the ISA rather than chosen. The 16-bit word width matches the instruction length and the register width, so no packing or splitting is needed on any access. The depth of 65536 covers the full range addressable by a 16-bit program counter.
+
+The memory is a read/write RAM, but it behaves as a ROM during normal execution, where the CPU writes to it only via sw. The contents at the start of the execution come from the UART upload, where the bootloader writes the program into memory at run time over the serial link. 
 
 \subsection{Register File}
 % Short description of the component (similar to Sec. 1.3).
+The register file holds the processor's eight general-purpose registers. Its three asynchronous read ports let a single instruction supply the ALU with two operands while simultaneously providing a third value to the comparator or the memory write path, which is what allows beq to test its condition and compute its target in one state. Writes are synchronous and gated by an enable, so a result computed combinationally during an execute state is committed on the edge leaving it. Register 0 is hardwired to zero and discards writes, making it available as a constant source of zero.
 
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{Clk}             & In  & 1  & 100 MHz system clock\\
+    \texttt{Wr\_Addr} & In & 3 & Destination register index for the write port.\\
+    \texttt{D\_in} & In & 16 & Data to be written to Wr\_addr. Sourced from the ALU result, memory output, or PC+1 depending on the instruction.\\
+    \texttt{w\_enable} & In & 1 & Write enable. The write commits only when this is asserted at a rising edge.\\
+    \texttt{Read\_A} & In & 3 & Index for read port A.\\
+    \texttt{Read\_B} & In & 3 & Index for read port B.\\
+    \texttt{Read\_C} & In & 3 & Index for read port C.\\
+    \texttt{Q\_A} & Out & 16 & Contents of the register selected by Read\_A.\\
+    \texttt{Q\_B} & Out & 16 & Contents of the register selected by Read\_B.\\
+    \texttt{Q\_C} & Out & 16 & Contents of the register selected by Read\_C.\\
+    \texttt{Q\_R7} & Out & 16 & Contents of the register 7, exposed continuously for the seven-segment display.\\
     \bottomrule
   \end{tabular}
-  \caption{<Component 4> ports.}
+  \caption{Register File ports.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp4_rtl}{0.9}{RTL diagram of <Component 4>.}
+\projfig{RF_RTL}{0.6}{Diagram of Register File}
 % Text describing how the pieces work together.
+\paragraph{} \textbf{Address Inputs}: All four address ports come directly from the controller with no muxing: Wr\_addr from Reg\_Addr, and the three read indices from Reg\_Addr\_A, Reg\_Addr\_B, Reg\_Addr\_C.
 
-\subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp4_fsm}{0.75}{State transition diagram for <Component 4>.}
+\textbf{Write data}: D\_in comes from the controller's Reg\_write output, which the controller itself multiplexes across states, sourcing it from ALU\_Result for arithmetic instructions, from Mem\_Output during lw write-back, and from PC\_value for jalr's link value.
 
-\subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
+\textbf{Output fan-out}: Q\_A drives the comparator and the controller's Reg\_A input. Q\_B drives the comparator and the ALU's first operand mux. Q\_C drives the ALU's second operand mux. Q\_R7 bypasses all muxing and drives the display.
 
 \subsection{Program Counter}
 % Short description of the component (similar to Sec. 1.3).
-
+The program counter is a 16-bit register holding the address of the instruction currently being fetched. It updates only when its enable is asserted, which the controller does once per instruction in the execute state. It is important that the address must remain stable across fetch and decode while memory returns the instruction. Its output feeds the memory address mux directly and the incrementer that produces the next sequential address.
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{Clk}             & In  & 1  & 100 MHz system clock\\
+    \texttt{D}             & In  & 16  & Next address. Selected between PC+1 for sequential execution and the controller's PC\_Write for taken branches and jumps.\\
+
+    \texttt{En}             & In  & 1  & Load enable\\
+    \texttt{Q}             & Out  & 16  & Current instruction address. Drives the memory address mux and the incrementer.\\
+    
     \bottomrule
   \end{tabular}
-  \caption{<Component 5> ports.}
+  \caption{Program Counter ports.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp5_rtl}{0.9}{RTL diagram of <Component 5>.}
+\projfig{PC_RTL}{0.6}{Diagram of Program Counter}
 % Text describing how the pieces work together.
+\paragraph{} \textbf{Input mux}: D comes from a 2:1 multiplexer selecting between PC\_plus1 and the controller's PC\_Write, controlled by PC\_Sel. PC\_Sel is asserted unconditionally for jalr and gated by EQ\_flag for beq, so a not-taken branch falls through to the sequential path.
 
-\subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp5_fsm}{0.75}{State transition diagram for <Component 5>.}
+\textbf{Enable}: En comes from the controller's PC\_En, asserted once per instruction in the execute state.
 
-\subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
-
+\textbf{Output fan-out}: Q is unmultiplexed and drives three loads: the memory address mux, the incrementer, and the controller's PC\_value input.
 \subsection{Instruction Register}
 % Short description of the component (similar to Sec. 1.3).
-
+The instruction register captures the word returned by memory at the end of the decode state and holds it stable for the remainder of the instruction. This is necessary because memory is unified: during lw and sw the address port is redirected to a data address, so the instruction word would otherwise be lost. Holding it in a dedicated register lets the controller and datapath read the opcode, register indices, and immediate fields throughout execution.
 \subsubsection{Description of Ports}
 \begin{table}[H]
   \centering
-  \begin{tabular}{@{}llll@{}}
+  \small
+  \begin{tabular}{@{}lllp{0.42\textwidth}@{}}
     \toprule
     \textbf{Port} & \textbf{Dir.} & \textbf{Width} & \textbf{Description} \\
     \midrule
-    <port> & <In/Out> & <n> & <description> \\
+    \texttt{Clk}             & In  & 1  & 100 MHz system clock\\
+    \texttt{D\_in}             & In  & 16  & Instruction word from memory's output.\\
+
+    \texttt{En}             & In  & 1  & Load enable\\
+    \texttt{Q}             & Out  & 16  & The held instruction. Bits 15–13 are the opcode, 12–10 the first register field, 9–7 the second, 6–0 the signed immediate for RRI-type, 9–0 the immediate for RI-type, and 2–0 the third register field for RRR-type.\\
     \bottomrule
   \end{tabular}
-  \caption{<Component 6> ports.}
+  \caption{Instruction Register ports.}
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{comp6_rtl}{0.9}{RTL diagram of <Component 6>.}
+\projfig{IR_RTL}{0.6}{Diagram of Instruction Register}
 % Text describing how the pieces work together.
+\paragraph{} \textbf{Input}: D\_in comes directly from memory's Q with no muxing.
 
-\subsubsection{Finite State Machine (FSM) Diagram}
-% If applicable. Label all states, inputs, outputs; describe behavior.
-% \projfig{comp6_fsm}{0.75}{State transition diagram for <Component 6>.}
+\textbf{Enable}: En comes from the controller's IR\_En, asserted only during decode.
 
-\subsubsection{Description of Memory}
-% If applicable. Width, depth, contents (for ROM), control signals.
-
+\textbf{Output fan-out}: Q is unmultiplexed but splits into the instruction's fields, all consumed by the controller as its IR input: bits 15–13 as opcode, 12–10 and 9–7 as register indices, 2–0 as the third register index, 6–0 into the sign-extension logic, and 9–0 into the zero-extension logic. The two extension paths are pure wiring — sign extension replicates bit 6 across positions 15–7, zero extension ties them to ground — and their results feed the controller's Immediate output, which the controller muxes between them by state.
 \subsection{UART Receiver}
 The UART receiver recovers bytes from the Basys-3's USB--UART bridge and
 assembles them into the 16-bit words the rest of the bootloader works in. It
@@ -580,7 +647,7 @@ boundary.
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{uart_rtl}{0.9}{RTL diagram of the UART receiver and byte-pair assembler.}
+\projfig{UART_REC}{0.6}{RTL diagram of the UART receiver and byte-pair assembler.}
 The receiver is built from four pieces in series: a synchroniser, a bit-timing
 counter, a shift register, and a byte-pair assembler.
 
@@ -702,7 +769,7 @@ block and the UART receiver of Section~2.7.
 \end{table}
 
 \subsubsection{Register Transfer Level (RTL) Diagram}
-% \projfig{bootloader_rtl}{0.9}{RTL diagram of the bootloader.}
+\projfig{bootloader_RTL}{0.6}{RTL diagram of the bootloader.}
 Three registers and a comparator sit between the UART receiver and the memory
 write port.
 
@@ -830,6 +897,7 @@ each instruction except \texttt{lw}, which takes five.
 % one extra clock in exec_instr before rerunning and capturing waveforms.
 
 \subsubsection{Behavioral Simulations}
+There are a lot of ports to keep track of, rendering a behavioral simulation not the most effective tool for testing. Thus, hardware validation was utilized.
 % Legible, annotated waveforms.
 % \projfig{controller_sim}{0.95}{Behavioral simulation of the Controller.}
 % Annotate: (1) the FETCH -> FETCH2 -> DECODE sequence with IR_En asserted only
@@ -851,53 +919,45 @@ on the display. Section~3.4 covers that test.
 
 \subsection{ALU}
 % Testing strategy and success criteria.
-
+Because the ALU is purely combinational, it was driven with one stimulus vector per opcode and its output sampled after settling. Operands were chosen so that each result is unique and identifies the operation unambiguously: a correct NAND cannot be mistaken for a correct addition of the same inputs. Both a positive and a negative addend were included to confirm two's-complement handling, since sign extension feeding the adder is the mechanism the branch target depends on. Sucess depended on each of the eight opcodes producing the arithmetically correct result, with addition applied for add, addi, sw, lw, and beq, NAND for nand, and a six-position left shift for lui.
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp2_sim}{0.95}{Behavioral simulation of <Component 2>.}
-
-\subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+\projfig{ALU_Waveform.png}{0.95}{Behavioral simulation of ALU}
+The waveform steps the opcode from 0 through 7 at 100 ns intervals. Eight of eight cases pass: 10 + 5 = 0x000F, 10 + (negative 3) = 0x0007, 0xFFFF NAND 0x0000 = 0xFFFF, 0x0155 shifted left 6 = 0x5540, 0x2000 + 0x0010 = 0x2010, 0x1000 + ( negative 16) = 0x0FF0, and 10 + 10 = 0x0014. Opcode 111 (jalr), also correctly returns the sum of its operands. 
 
 \subsection{Memory}
 % Testing strategy and success criteria.
+The memory was tested for three properties: that a write followed by a read returns the written value, that writes to one address leave others undisturbed, and that data presented while write enable is deasserted is not committed. The third is the important one, since a memory that writes unconditionally would appear to work in every read-after-write test while corrupting data during instruction fetch. Success depended on written values being read back correctly, distinct addresses holding independent values, and deasserting write enable preventing modification.
 
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp3_sim}{0.95}{Behavioral simulation of <Component 3>.}
-
-\subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+\projfig{Memory_Waveform.png}{0.95}{Behavioral simulation of Memory}
+The waveform shows 0x1234 written to address 0x0010 and read back correctly; address 0x0020 reading as 0x0000 before being written and 0xABCD after; and address 0x0010 still holding 0x1234 on return, confirming isolation. With write enable low and D\_in changed to 0xFFFF, the stored value remains 0x1234. A final write of 0x5555 to 0x0010 confirms overwriting works.
 
 \subsection{Register File}
 % Testing strategy and success criteria.
-
+The register file was tested for independent storage across registers, simultaneous access through all three read ports, and correct write gating. The three-port read was tested in three configurations (three distinct registers, a permuted set, and the same register on all three ports) to confirm the read multiplexers are genuinely independent rather than sharing a select path. Success depended on each register holding its written value independently, all three read ports resolving to the register named by their own address input, and writes occurring only when enabled.
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp4_sim}{0.95}{Behavioral simulation of <Component 4>.}
-
-\subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+\projfig{Register_File_Waveform.png}{0.95}{Behavioral simulation of Register File}
+Writes of 0x1111, 0x2222, and 0x3333 to three registers read back correctly through all port permutations. At 60 ns, Read\_A/B/C = 2/0/1 yields Q\_A/Q\_B/Q\_C = 0x3333/0x1111/0x2222, confirming independent selection. A later write of 0xABCD to register 7 reads back correctly.
 
 \subsection{Program Counter}
 % Testing strategy and success criteria.
-
+The program counter's essential behavior is conditional loading, so the test alternates enable states while changing the data input. The critical case is holding: with enable deasserted and the input changing, the output must not follow. Sucess depended on the output loading the input on a rising edge when enabled, and holding its previous value when not, regardless of input activity.
 \subsubsection{Behavioral Simulations}
+The waveform confirms both. 0x1000 and 0x1001 load on consecutive enabled edges. With enable deasserted and the input changed to 0x2000, the output holds 0x1001 across the intervening edges, then loads 0x2000 when re-enabled, and 0xABCD on the following edge. This hold behavior is what allows a self-referential branch to halt the processor and what keeps the fetch address stable across the multi-cycle read.
 % Legible, annotated waveforms.
-% \projfig{comp5_sim}{0.95}{Behavioral simulation of <Component 5>.}
-
-\subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+\projfig{PC_Waveform.png}{0.95}{Behavioral simulation of Program Counter}
 
 \subsection{Instruction Register}
 % Testing strategy and success criteria.
+It is structurally identical to the program counter, and tested identically. The meaningful property is that the captured instruction survives while enable is low, since the instruction must remain readable throughout execution.Success depended on the register capturing the input on an enabled edge and holding it indefinitely while disabled.
 
 \subsubsection{Behavioral Simulations}
 % Legible, annotated waveforms.
-% \projfig{comp6_sim}{0.95}{Behavioral simulation of <Component 6>.}
-
-\subsubsection{Hardware Validation}
-% Scope / logic analyzer captures, photos, or video link. Annotate.
+\projfig{IR_Waveform.png}{0.95}{Behavioral simulation of Instruction Register}
+0x1234 and 0x5678 load on enabled edges. With enable deasserted and the input changed to 0xABCD, the output holds 0x5678, then captures 0xABCD on re-enable and 0xF123 on the following edge.
 
 \subsection{UART Receiver}
 \label{sec:boot-sim}
@@ -919,6 +979,7 @@ least significant first, a high stop bit, and an idle period between frames. A
 order \texttt{uploader.py}.
 
 \subsubsection{Behavioral Simulations}
+There are a lot of ports to keep track of, rendering a behavioral simulation not the most effective tool for testing. Thus, hardware validation was utilized.
 % Legible, annotated waveforms.
 % \projfig{uart_sim}{0.95}{Behavioral simulation of the UART receiver.}
 % Annotate: (1) one full 8N1 frame on RsRx with the start, data, and stop bits
@@ -961,6 +1022,7 @@ was actually sent; the trailing word is ignored; and \texttt{Boot\_Done} is
 high once the payload is complete.
 
 \subsubsection{Behavioral Simulations}
+There are a lot of ports to keep track of, rendering a behavioral simulation not the most effective tool for testing. Thus, hardware validation was utilized.
 % Legible, annotated waveforms.
 % \projfig{bootloader_sim}{0.95}{Behavioral simulation of the bootloader.}
 % Annotate: (1) the header word arriving and S_IDLE -> S_GET_SIZE -> S_ARM,
@@ -994,25 +1056,29 @@ survives from one load to the next.
 % and switching to r7's value, plus the uploader.py console output for the same
 % run so the word counts can be compared side by side.
 
-\subsection{<Subsystem 1>}
-% Use only if testing needs to go deeper than top level + components.
-\subsubsection{<Subcomponent 1>}
-\paragraph{Behavioral Simulations}\mbox{}\\
-\paragraph{Hardware Validation}\mbox{}\\
-
-\subsubsection{<Subcomponent 2>}
-\paragraph{Behavioral Simulations}\mbox{}\\
-\paragraph{Hardware Validation}\mbox{}\\
-
 \subsection{Overall Design}
+With every component verified in isolation, the purpose of the top-level simulation was to test the interfaces between them. The test program was chosen so that each instruction produces a distinct, identifiable value in register 7 and the final instruction halts the processor. Rather than observing only the top-level outputs, the simulation was instrumented with the internal signals that reveal why the processor behaves as it does: the controller state, the program counter, the instruction register, both ALU operands and its result, the sign-extended immediate, and the program counter control signals. Success dependend on each output matching the expected value and the register 7 to attain a value of 0x000F at the conclusion of the implementation. 
 \subsubsection{Behavioral Simulations}
+All criteria met. The waveform shows the instruction register taking 0x2485, 0x290A, 0x1C82, 0x5C82, and 0xC07F in sequence, with the program counter advancing 0x0000 through 0x0004. Each instruction occupies four states (FETCH, FETCH2, DECODE, and one execute state) with the second fetch state accommodating the memory's two-cycle read latency. Register 7 transitions to 0x000F after the addition. The program "stops" after the last instruction is implemented, meaning the beq is indeed infinitely self-looping to itself.
+\projfig{Top_Level_Sim.png}{0.9}{Top-level Behavioral Simulation}
 \subsubsection{Hardware Validation}
+Hardware validation also went well. Running the four-instruction program ending in add r7, r1, r2 followed by the halting branch, the board displays a stable 000F (15 decimal), the sum of 5 and 10, with the nibbles in the expected order. The value persists indefinitely, confirming that the branch freezes the program counter on hardware as it does in simulation.
+\projfig{Hardware Board.jpg}{0.9}{Top-level Hardware Validation}
 
 %==============================================================
 \section{Analysis of the Design}
 % Was it successful? Unexpected difficulties? Difficult bugs?
 % If something doesn't work, say what's wrong and how you'd fix it.
 % Aim this at a future student doing a similar project.
+The project succeeded. The processor executes all eight RiSC-16 opcodes, meets timing at the full 100 MHz clock with 0.320 ns of setup slack, and was validated in both simulation and hardware. The UART bootloader and host-side assembler exceeded the original scope: programs can be written in assembly, uploaded with one command, and run without resynthesizing the design.
+
+The individual datapath components were straightforward. The program counter, instruction register, register file, and ALU each passed their unit tests without revision. Designing the controllers and the RTL diagram was the hardest part. The authors had to figure out what components were required to correctly implement all the instructions, along with identifying how components connected to each other. For the controllers, the authors had to keep track of twenty two outputs whose values depend jointly on state and instruction. 
+
+The hardest bug to fix was realizing that the block RAM takes two cycles to return data, not one. The arithmetic worked perfectly, but a beq r0, r0, -1 self-loop did not halt. The program counter walked the entire 65536-word space, wrapped, and re-executed the program indefinitely, incrementing register 7 every two milliseconds. The controller presented the fetch address in one state and captured the result in the next, assuming single-cycle latency. The instruction register therefore captured each word one cycle late, leaving the program counter one address ahead of the instruction executing. add and addi never read the counter, so they were unaffected, but beq computes its target as PC+1 plus the immediate, so a branch to itself resolved to the following instruction, a no-op, and execution continued. The latency came from depth: 65536 words cannot fit one RAMB36E1, so the tool cascaded roughly thirty of them behind an output multiplexer, and that multiplexer is the extra cycle.
+
+After a while, the authors realized the issue and added a second fetch state in the controller. This makes the controller correct at either latency. 
+
+The author's advice to future students is to draw the complete datapath first. Also, write the controller's testbench before the controller. Simulate before synthesizing, and add internal signals (program counter, instruction register, state) to the waveform rather than watching top-level outputs only. When a simulation appears to pass, confirm the run is long enough for the failure you are looking for to have occurred.
 
 \subsection{Resource Utilization}
 \begin{table}[H]
@@ -1021,12 +1087,13 @@ survives from one load to the next.
     \toprule
     \textbf{Resource} & \textbf{Used} & \textbf{Available} & \textbf{Utilization} \\
     \midrule
-    Slice LUTs      & <n> & 20800 & <\%> \\
-    Slice Registers & <n> & 41600 & <\%> \\
-    Block RAM Tile  & <n> & 50    & <\%> \\
-    DSPs            & <n> & 90    & <\%> \\
-    Bonded IOB      & <n> & 106   & <\%> \\
-    BUFGCTRL        & <n> & 32    & <\%> \\
+    Slice LUTs      & 349 & 20800 & 1.68\% \\
+    Slice Registers & 190 & 41600 & 0.46\% \\
+    Block RAM Tile  & 30 & 50    & 60\% \\
+    F7 Muxes        & 50 & 16300    & 0.31\% \\
+    F8 Muxes        & 9  & 8150   & 0.11\% \\
+    Bonded IOB      & 12 & 106   & 11.32\% \\
+    BUFGCTRL        & 1 & 32    & 3.13\% \\
     \bottomrule
   \end{tabular}
   \caption{Post-implementation resource utilization (Artix-7 XC7A35T, Basys3).}
@@ -1041,7 +1108,9 @@ survives from one load to the next.
     \toprule
     \textbf{Warning} & \textbf{Justification} \\
     \midrule
-    <warning text> & <why it is safe to ignore> \\
+    Parallel Synthesis Criteria not met & Vivado can synthesize independent modules in parallel across CPU cores. The design is small enough that it didn't qualify. It is just a runtime optimization notice. \\
+
+    Port CLKB in module blk\_mem\_output\_block is either unconnected or has no load & The Block Memory Generator covers every configuration it supports. Since the design has a single port, port-B signals have no drivers or loads. The second port is not required in the design, and the message is just an acknowledgment of that. \\
     \bottomrule
   \end{tabular}
   \caption{Residual warnings.}
@@ -1049,7 +1118,7 @@ survives from one load to the next.
 
 \subsection{Division of Labor}
 Jagger was responsible for the CPU control FSM, the bootloader FSM, and the UART receiver
-He also wrote the assembler and the uploader script, alongside writing the top level file.
+He also wrote the assembler and the uploader script, alongside writing the top level file. Aditya was responsible for the datapath, designing the program counter, the memory, instruction register, register file, and the ALU. Additionally, he was responsible for the testing of the system, writing the test branches and ensuring correct hardware validation.
 
 
 \subsection{Future Work}
@@ -1065,14 +1134,14 @@ before writing to memory.
 \section{Acknowledgements}
 % Outside sources of information or code; helpful people.
 % No need to cite the textbook, daily exercises, or course videos.
-Huge thank you Bruce Jacob for creating the RiSC-16 architecture and providing the original assembler. We used every resourc \href{https://user.eng.umd.edu/~blj/risc/}{here}.
+Huge thank you Bruce Jacob for creating the RiSC-16 architecture and providing the original assembler. We used every resource \href{https://user.eng.umd.edu/~blj/risc/}{here}.
 Tad was also very helpful in providing guidance and advice early on, steering us away from a complex datapath design.
 %==============================================================
 \section{Conclusions}
 % Brief summary, closing remarks, advice to future students.
-This project was an absolute monster to complete in the 2 weeks we had. I (Jagger) am very happy we chose such an ambitious project, 
-and I am very proud of the final result. The bootloader and UART receiver were a lot of fun to implement, and I learned a lot about 
-FSM design and VHDL in general. I also have a much better understanding of the basics of how a CPU works, and how RISC architectures work in general.
+This project was an absolute monster to complete in the 2 weeks we had. We (Jagger and Aditya) are very happy we chose such an ambitious project, 
+and are very proud of the final result. The bootloader and UART receiver were a lot of fun to implement, and we learned a lot about 
+FSM design and VHDL in general. We also have a much better understanding of the basics of how a CPU works, and how RISC architectures work in general.
 \appendix
 
 \section{VHDL Source Code}
@@ -1081,8 +1150,12 @@ FSM design and VHDL in general. I also have a much better understanding of the b
   \item \texttt{controller.vhd} --- the CPU control FSM
   \item \texttt{bootloader.vhd} --- UART receiver, byte-pair assembler,
     payload registers, and the load FSM
-  \item \texttt{<file>.vhd} --- <short description>
-  \item \texttt{<file>.vhd} --- <short description>
+  \item \texttt{ALU.vhd} --- Code for the ALU Implementation
+  \item \texttt{IR.vhd} --- Code for the Instruction Register Implementation
+  \item \texttt{PC.vhd} --- Code for the Program Counter Implementation
+  \item \texttt{Reg\_File.vhd} --- Code for the Register File Implementation
+  \item \texttt{seven\_seg\_mux.vhd} --- Code for the register 7 display
+  \item \texttt{top\_level.vhd} --- Code for connecting all the components together
 \end{itemize}
 
 \section{VHDL Testbenches}
@@ -1092,8 +1165,12 @@ FSM design and VHDL in general. I also have a much better understanding of the b
     eight opcodes and both \texttt{lw} states
   \item \texttt{bootloader\_tb.vhd} --- self-checking testbench driving a full
     UART payload and monitoring the memory write port
-  \item \texttt{<file>\_tb.vhd} --- <short description>
-  \item \texttt{<file>\_tb.vhd} --- <short description>
+  \item \texttt{ALU\_tb.vhd} --- self-checking testbench for the ALU
+  \item \texttt{Memory\_tb.vhd} --- self-checking testbench for the Memory. Ensures correct handling of enables and address locations.
+  \item \texttt{IR\_tb.vhd} --- self-checking testbench for the Instruction Register.
+  \item \texttt{PC\_tb.vhd} --- self-checking testbench for the Program Counter.
+  \item \texttt{Reg\_File\_tb.vhd} --- self-checking testbench for the Register File.
+  \item \texttt{top\_level\_tb.vhd} --- waveform-generating testbench for the top-level.
 \end{itemize}
 
 \section{Support Script Source Code}
