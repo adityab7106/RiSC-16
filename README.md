@@ -1,8 +1,6 @@
 # RiSC-16 CPU
 
-A 16-bit RiSC-16 processor implemented in VHDL on a Xilinx Artix-7 FPGA (Digilent Basys3) and synthesized with Vivado 2024.2.
-
-**Authors:** Jagger Winkler and Aditya Binay
+A 16-bit RiSC-16 processor implemented in VHDL on a Xilinx Artix-7 FPGA (Digilent Basys3) and synthesized with Vivado 2024.2. VHDL was primarily used to code the functionalities of the project, which was synthesized with Vivado 2024.2. The design of the processor calls for a multi-cycle architecture, where each instruction executes over a sequence of controller states, leading to a simpler datapath and shorter critical paths. There are seven primary components in the system: a program counter, a combined instruction and data memory implemented as a Block Memory Generator IP, an instruction register, a three-port register file with a hardwired zero register, an arithmetic-logic unit (ALU) that can support operations such as addition, nand, and upper-immediate shifting, a finite-state-machine controller, and a seven-segment display driver that showcases the current value of register seven. There are four multiplexers that appropriately steer the data between components based on the controller's directions. To avoid having to resynthesize the design for each test program, a bootloader is implemented that assembles RISC-16 from a text file and transfers the resulting machine code to the board over the USB-UART link, where a receiver writes it into program memory. A single command handles environment setup, assembly, and upload, and a reset button then clears the display and begins execution.
 
 ## Overview
 
