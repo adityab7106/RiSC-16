@@ -52,6 +52,7 @@ Four multiplexers steer data between components under the controller's direction
 
 A `beq` instruction that branches to itself is appended to every program, freezing the program counter once execution finishes so the result in register 7 stays on the display. Pressing reset clears the display and restarts execution from address 0.
 
+I was responsible for the datapath, designing the program counter, the memory, instruction register, register file, and the ALU.
 ## Acknowledgements
 
 Thanks to Bruce Jacob for the original RiSC-16 architecture and reference assembler.
